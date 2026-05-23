@@ -5,71 +5,214 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>JavaNotes 功能展示</title>
   <style>
+    :root {
+      --text: #24292f;
+      --muted: #57606a;
+      --border: #d0d7de;
+      --panel: #f6f8fa;
+      --blue: #0969da;
+    }
+    * { box-sizing: border-box; }
     body {
-      max-width: 900px;
+      max-width: 1120px;
       margin: 0 auto;
-      padding: 28px 20px 56px;
+      padding: 28px 20px 64px;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans SC", Arial, sans-serif;
-      color: #24292f;
+      color: var(--text);
       line-height: 1.6;
       background: #fff;
     }
-    h1, h2 { border-bottom: 1px solid #d0d7de; padding-bottom: 0.35em; }
-    h2 { margin-top: 36px; color: #0969da; }
-    .feature {
-      margin: 18px 0;
-      padding: 16px;
-      border: 1px solid #d0d7de;
-      border-radius: 8px;
-      background: #f6f8fa;
+    a { color: var(--blue); text-decoration: none; }
+    h1 {
+      margin: 8px 0 10px;
+      font-size: clamp(2rem, 6vw, 3.6rem);
+      line-height: 1.08;
+      letter-spacing: 0;
     }
-    .feature h3 { margin-top: 0; }
-    a { color: #0969da; text-decoration: none; }
-    .notice { padding: 14px 16px; border-left: 4px solid #1f883d; background: #f0fff4; color: #1a5e2a; }
+    h2 {
+      margin-top: 42px;
+      padding-bottom: 0.35em;
+      border-bottom: 1px solid var(--border);
+      color: var(--blue);
+      font-size: 1.55rem;
+    }
+    h3 { margin: 0 0 10px; font-size: 1.05rem; }
+    .lead {
+      max-width: 780px;
+      margin: 0 0 22px;
+      color: var(--muted);
+      font-size: 1.08rem;
+    }
+    .single-display,
+    .grid-item {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--panel);
+      padding: 14px;
+      text-align: center;
+    }
+    .single-display { margin: 18px 0; }
+    .grid-display {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 18px;
+      margin: 18px 0;
+    }
+    img {
+      max-width: 100%;
+      height: auto;
+      border: 1px solid #eaeef2;
+      border-radius: 7px;
+      background: #fff;
+      box-shadow: 0 3px 10px rgba(31, 35, 40, 0.08);
+    }
+    .mobile-screen {
+      max-height: 560px;
+      width: auto;
+    }
+    .wide-screen {
+      width: 100%;
+      max-height: 720px;
+      object-fit: contain;
+    }
+    .caption {
+      margin-top: 10px;
+      color: var(--muted);
+      font-size: 0.94rem;
+      font-weight: 600;
+    }
+    .screenshot-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 14px;
+    }
+    .shot {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px;
+      background: #fff;
+    }
+    .shot img {
+      width: 100%;
+      max-height: 360px;
+      object-fit: contain;
+    }
+    .shot p {
+      margin: 8px 0 0;
+      color: var(--muted);
+      font-size: 0.9rem;
+      text-align: center;
+    }
+    @media (max-width: 880px) {
+      .grid-display,
+      .screenshot-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+    @media (max-width: 560px) {
+      body { padding: 22px 14px 48px; }
+      .grid-display,
+      .screenshot-grid { grid-template-columns: 1fr; }
+    }
   </style>
 </head>
 <body>
-  <p><a href="../index.html">返回首页</a></p>
+  <p><a href="index.html">返回首页</a></p>
   <h1>JavaNotes 功能展示</h1>
-  <p>本页整理 JavaNotes 的主要功能模块，用于开源首页展示。原截图/GIF 中的公网资源地址已在开源版本中移除。</p>
-  <div class="notice">如需展示真实 GIF 或截图，建议将脱敏后的图片资源放入 <code>docs/assets/</code> 后再引用。</div>
+  <p class="lead">这里集中展示 JavaNotes 的核心交互：学习路径切换、AI 助教、每日一练、错题复盘、代码沙盒、算法可视化、笔记系统和个人中心。</p>
 
   <h2>学习路径</h2>
-  <div class="feature">
-    <h3>A/B 双学习路径</h3>
-    <p>A 路径面向零基础用户，提供循序渐进的闯关式学习；B 路径面向进阶用户，提供项目实战、算法训练和技术文章。</p>
+  <div class="single-display">
+    <img src="assets/gif/路径切换.gif" alt="路径切换" class="mobile-screen" loading="lazy">
+    <div class="caption">A/B 双学习路径一键切换</div>
   </div>
 
   <h2>AI 核心能力</h2>
-  <div class="feature">
-    <h3>AI 助教</h3>
-    <p>支持围绕课程上下文进行连续对话、代码解释、错误分析和学习建议。</p>
-  </div>
-  <div class="feature">
-    <h3>每日一练</h3>
-    <p>用户可选择难度、知识点和题型，由 AI 生成个性化练习，并在完成后进入错题回顾与统计分析。</p>
+  <div class="single-display">
+    <img src="assets/gif/助教.gif" alt="AI 助教" class="mobile-screen" loading="lazy">
+    <div class="caption">AI 助教：支持代码纠错与上下文连续对话</div>
   </div>
 
-  <h2>代码沙盒</h2>
-  <div class="feature">
-    <h3>移动端 Java 运行</h3>
-    <p>后端通过 Java Compiler API 实现代码编译与执行，让用户在手机端完成“学习、编写、运行、反馈”的闭环。</p>
+  <div class="grid-display">
+    <div class="grid-item">
+      <img src="assets/gif/每日一练配置.gif" alt="每日一练配置" class="mobile-screen" loading="lazy">
+      <div class="caption">练习配置：自定义难度与考点</div>
+    </div>
+    <div class="grid-item">
+      <img src="assets/gif/每日一练习题.gif" alt="每日一练习题" class="mobile-screen" loading="lazy">
+      <div class="caption">沉浸刷题：AI 生成题目与解析</div>
+    </div>
   </div>
 
-  <h2>算法可视化</h2>
-  <div class="feature">
-    <h3>动态算法演示</h3>
-    <p>通过 WebView 承载算法动画资源，帮助用户理解链表、数组、树、动态规划等常见算法过程。</p>
+  <div class="grid-display">
+    <div class="grid-item">
+      <img src="assets/gif/错题本与选择题.gif" alt="错题本与选择题" class="mobile-screen" loading="lazy">
+      <div class="caption">错题回顾：专项巩固历史错题</div>
+    </div>
+    <div class="grid-item">
+      <img src="assets/gif/错题统计.gif" alt="错题统计" class="mobile-screen" loading="lazy">
+      <div class="caption">学习仪表盘：可视化数据统计</div>
+    </div>
   </div>
 
-  <h2>个人知识库与社区</h2>
-  <div class="feature">
-    <h3>本地笔记</h3>
-    <p>支持 Markdown 笔记、分类管理和本地持久化，方便沉淀学习材料。</p>
+  <h2>代码沙盒与算法可视化</h2>
+  <div class="grid-display">
+    <div class="grid-item">
+      <img src="assets/gif/代码隔离运行.gif" alt="代码隔离运行" class="mobile-screen" loading="lazy">
+      <div class="caption">在线编写 Java 代码并实时查看运行结果</div>
+    </div>
+    <div class="grid-item">
+      <img src="assets/gif/算法可视化展示.gif" alt="算法可视化展示" class="mobile-screen" loading="lazy">
+      <div class="caption">算法执行过程动态可视化</div>
+    </div>
   </div>
-  <div class="feature">
-    <h3>评论、收藏与徽章</h3>
-    <p>通过评论互动、内容收藏、学习徽章和错题本构建更完整的学习激励体系。</p>
+
+  <h2>个人知识库</h2>
+  <div class="grid-display">
+    <div class="grid-item">
+      <img src="assets/gif/新建笔记.gif" alt="新建笔记" class="mobile-screen" loading="lazy">
+      <div class="caption">Markdown 笔记编辑</div>
+    </div>
+    <div class="grid-item">
+      <img src="assets/gif/笔记分类.gif" alt="笔记分类" class="mobile-screen" loading="lazy">
+      <div class="caption">分类管理学习资料</div>
+    </div>
+  </div>
+
+  <h2>个人中心与社区</h2>
+  <div class="grid-display">
+    <div class="grid-item">
+      <img src="assets/gif/个人资料编辑和评论功能.gif" alt="个人资料编辑和评论功能" class="mobile-screen" loading="lazy">
+      <div class="caption">资料编辑与评论交流</div>
+    </div>
+    <div class="grid-item">
+      <img src="assets/gif/收藏功能和我的徽章以及错题本.gif" alt="收藏功能和我的徽章以及错题本" class="mobile-screen" loading="lazy">
+      <div class="caption">收藏、徽章与错题本</div>
+    </div>
+  </div>
+
+  <h2>系统设置</h2>
+  <div class="single-display">
+    <img src="assets/gif/设置界面.gif" alt="设置界面" class="mobile-screen" loading="lazy">
+    <div class="caption">个性化设置中心</div>
+  </div>
+
+  <h2>截图总览</h2>
+  <div class="screenshot-grid">
+    <div class="shot"><img src="assets/screenshot/登录.png" alt="登录" loading="lazy"><p>登录</p></div>
+    <div class="shot"><img src="assets/screenshot/注册.png" alt="注册" loading="lazy"><p>注册</p></div>
+    <div class="shot"><img src="assets/screenshot/侧边导航栏.png" alt="侧边导航栏" loading="lazy"><p>侧边导航栏</p></div>
+    <div class="shot"><img src="assets/screenshot/A学习.png" alt="A 学习" loading="lazy"><p>A 路径学习</p></div>
+    <div class="shot"><img src="assets/screenshot/A学习detail.png" alt="A 学习详情" loading="lazy"><p>A 路径详情</p></div>
+    <div class="shot"><img src="assets/screenshot/A练习.png" alt="A 练习" loading="lazy"><p>A 路径练习</p></div>
+    <div class="shot"><img src="assets/screenshot/AI助教.png" alt="AI 助教" loading="lazy"><p>AI 助教</p></div>
+    <div class="shot"><img src="assets/screenshot/AI每日一练.png" alt="AI 每日一练" loading="lazy"><p>AI 每日一练</p></div>
+    <div class="shot"><img src="assets/screenshot/B学习.png" alt="B 学习" loading="lazy"><p>B 路径学习</p></div>
+    <div class="shot"><img src="assets/screenshot/B算法.png" alt="B 算法" loading="lazy"><p>算法列表</p></div>
+    <div class="shot"><img src="assets/screenshot/B算法detail.png" alt="B 算法详情" loading="lazy"><p>算法详情</p></div>
+    <div class="shot"><img src="assets/screenshot/B项目.png" alt="B 项目" loading="lazy"><p>项目实战</p></div>
+    <div class="shot"><img src="assets/screenshot/B项目detail.png" alt="B 项目详情" loading="lazy"><p>项目详情</p></div>
+    <div class="shot"><img src="assets/screenshot/个人笔记本.png" alt="个人笔记本" loading="lazy"><p>个人笔记本</p></div>
+    <div class="shot"><img src="assets/screenshot/我的收藏.png" alt="我的收藏" loading="lazy"><p>我的收藏</p></div>
+    <div class="shot"><img src="assets/screenshot/个人界面.png" alt="个人界面" loading="lazy"><p>个人中心</p></div>
   </div>
 </body>
 </html>

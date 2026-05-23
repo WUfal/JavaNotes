@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>JavaNotes 智能学习助手</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --text: #1f2328;
+      --muted: #59636e;
+      --border: #d1d9e0;
+      --panel: #f6f8fa;
+      --blue: #0969da;
+      --green: #1f883d;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans SC", Arial, sans-serif;
+      color: var(--text);
+      background: #ffffff;
+      line-height: 1.6;
+    }
+
+    main {
+      max-width: 1040px;
+      margin: 0 auto;
+      padding: 48px 20px 64px;
+    }
+
+    .hero {
+      padding: 44px 0 32px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    h1 {
+      margin: 0 0 12px;
+      font-size: clamp(2rem, 6vw, 4rem);
+      line-height: 1.05;
+      letter-spacing: 0;
+    }
+
+    .lead {
+      max-width: 760px;
+      margin: 0;
+      font-size: 1.18rem;
+      color: var(--muted);
+    }
+
+    .badges {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 22px;
+    }
+
+    .badge {
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      padding: 5px 10px;
+      font-size: 0.86rem;
+      color: var(--muted);
+      background: var(--panel);
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 16px;
+      margin-top: 28px;
+    }
+
+    .card {
+      display: block;
+      min-height: 150px;
+      padding: 20px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: inherit;
+      text-decoration: none;
+      background: #fff;
+    }
+
+    .card:hover {
+      border-color: var(--blue);
+      box-shadow: 0 8px 24px rgba(140, 149, 159, 0.18);
+    }
+
+    .card h2 {
+      margin: 0 0 8px;
+      font-size: 1.18rem;
+    }
+
+    .card p {
+      margin: 0;
+      color: var(--muted);
+    }
+
+    section {
+      margin-top: 40px;
+    }
+
+    section h2 {
+      margin: 0 0 12px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--border);
+      font-size: 1.45rem;
+    }
+
+    ul {
+      margin: 0;
+      padding-left: 1.35rem;
+    }
+
+    li { margin: 8px 0; }
+
+    code {
+      border-radius: 6px;
+      padding: 0.18em 0.38em;
+      background: #afb8c133;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.92em;
+    }
+
+    .note {
+      margin-top: 20px;
+      padding: 14px 16px;
+      border-left: 4px solid var(--green);
+      background: #f0fff4;
+      color: #1a5e2a;
+    }
+
+    @media (max-width: 720px) {
+      main { padding-top: 28px; }
+      .grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header class="hero">
+      <h1>JavaNotes 智能学习助手</h1>
+      <p class="lead">一个基于 Flutter、Spring Boot 和大模型能力构建的 Java 学习生态系统，覆盖课程学习、AI 助教、在线代码沙盒、算法可视化、错题复盘、社区互动与本地知识库。</p>
+      <div class="badges" aria-label="技术栈">
+        <span class="badge">Flutter 3.x</span>
+        <span class="badge">Spring Boot 3.x</span>
+        <span class="badge">Java 17</span>
+        <span class="badge">PostgreSQL</span>
+        <span class="badge">Redis</span>
+        <span class="badge">AI Assistant</span>
+      </div>
+    </header>
+
+    <div class="grid">
+      <a class="card" href="technical-report.html">
+        <h2>技术报告</h2>
+        <p>查看架构设计、技术栈、核心功能实现、数据模型与部署运行说明。</p>
+      </a>
+      <a class="card" href="screenshots-report.html">
+        <h2>功能展示</h2>
+        <p>查看 A/B 学习路径、AI 助教、每日一练、代码沙盒、算法可视化和笔记系统介绍。</p>
+      </a>
+    </div>
+
+    <section>
+      <h2>项目组成</h2>
+      <ul>
+        <li><code>todo_mobile</code>：Flutter 移动端，负责学习路径、AI 对话、笔记、练习和个人中心。</li>
+        <li><code>todo_service</code>：Spring Boot 后端，负责课程 API、认证、评论、代码运行、AI 调用和数据持久化。</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>核心能力</h2>
+      <ul>
+        <li>A/B 双路径学习：零基础闯关路径与进阶项目/算法路径并行。</li>
+        <li>AI 智能助教：支持上下文问答、代码讲解、纠错建议与每日练习生成。</li>
+        <li>在线代码沙盒：在移动端编写并运行 Java 代码，提升学练闭环效率。</li>
+        <li>算法可视化：通过 WebView 加载动态演示资源，辅助理解复杂流程。</li>
+        <li>本地知识库：离线优先的笔记系统，支持学习内容沉淀。</li>
+      </ul>
+    </section>
+
+    <p class="note">开源版本已移除公网服务器地址、数据库密码、AI Key、JWT Secret 等敏感配置。运行时请通过环境变量或 <code>--dart-define</code> 注入本地配置。</p>
+  </main>
+</body>
+</html>

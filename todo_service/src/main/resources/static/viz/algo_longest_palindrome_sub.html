@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>最长回文子串 - 算法可视化</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <style>
+        body { background-color: #f8fafc; font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; }
+        .cell-transition { transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+        .animate-pop { animation: pop 0.4s ease-out; }
+        @keyframes pop { 0% { transform: scale(0.8); opacity: 0.5; } 50% { transform: scale(1.1); } 100% { transform: scale(1); opacity: 1; } }
+    </style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel">
+    const { useState, useEffect, useRef } = React;
+
+    // --- 图标组件 ---
+    const Icons = {
+        Play: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>,
+        Pause: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>,
+        Step: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>,
+        Reset: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 12" /><path d="M3 3v9h9" /></svg>,
+        Settings: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>,
+        Shuffle: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="16 3 21 3 21 8"></polyline><line x1="4" y1="20" x2="21" y2="3"></line><polyline points="21 16 21 21 16 21"></polyline><line x1="15" y1="15" x2="21" y2="21"></line><line x1="4" y1="4" x2="9" y2="9"></line></svg>
+    };
+
+    const App = () => {
+        // --- 状态定义 ---
+        const [inputStr, setInputStr] = useState("babad");
+        const [str, setStr] = useState("babad");
+        const [mode, setMode] = useState("center"); // 'brute' | 'center'
+
+        // 运行状态
+        const [isPlaying, setIsPlaying] = useState(false);
+        const [isFinished, setIsFinished] = useState(false);
+        const [message, setMessage] = useState("准备就绪");
+
+        // 通用结果
+        const [maxRange, setMaxRange] = useState({ start: 0, end: 0, len: 1 });
+
+        // 暴力法状态 (O(N^3))
+        const [bruteI, setBruteI] = useState(0); // 起点
+        const [bruteJ, setBruteJ] = useState(0); // 终点
+        const [checkL, setCheckL] = useState(-1); // 检查回文时的左指针
+        const [checkR, setCheckR] = useState(-1); // 检查回文时的右指针
+        const [isChecking, setIsChecking] = useState(false); // 是否正在检查内部循环
+
+        // 中心扩散法状态 (O(N^2))
+        const [centerI, setCenterI] = useState(0); // 当前中心点基准
+        const [centerType, setCenterType] = useState(0); // 0: 奇数长度(单中心), 1: 偶数长度(双中心)
+        const [expandL, setExpandL] = useState(-1); // 扩散左边界
+        const [expandR, setExpandR] = useState(-1); // 扩散右边界
+        const [isExpanding, setIsExpanding] = useState(false); // 是否正在扩散
+
+        // --- 辅助函数 ---
+        const reset = (newStr = str) => {
+            setIsPlaying(false);
+            setIsFinished(false);
+            setMaxRange({ start: 0, end: 0, len: 1 });
+            setMessage("状态已重置");
+
+            // Brute
+            setBruteI(0);
+            setBruteJ(0);
+            setCheckL(-1);
+            setCheckR(-1);
+            setIsChecking(false);
+
+            // Center
+            setCenterI(0);
+            setCenterType(0);
+            setExpandL(0); // 初始选中第一个字符
+            setExpandR(0);
+            setIsExpanding(false);
+        };
+
+        const loadInput = () => {
+            if (!inputStr) return;
+            setStr(inputStr);
+            reset(inputStr);
+            setMessage(`已加载字符串: "${inputStr}"`);
+        };
+
+        const randomInput = () => {
+            const chars = "abc"; // 字符集小一点容易出回文
+            let res = "";
+            const len = 6 + Math.floor(Math.random() * 5);
+            for(let i=0; i<len; i++) res += chars[Math.floor(Math.random() * chars.length)];
+            setInputStr(res);
+            setStr(res);
+            reset(res);
+            setMessage(`已生成随机字符串: "${res}"`);
+        };
+
+        // --- 自动播放 ---
+        useEffect(() => {
+            let timer;
+            if (isPlaying && !isFinished) {
+                // 暴力法检查过程稍微快一点，中心扩散正常速度
+                const interval = (mode === 'brute' && isChecking) ? 400 : 1000;
+                timer = setInterval(() => {
+                    stepForward();
+                }, interval);
+            }
+            return () => clearInterval(timer);
+        }, [isPlaying, isFinished, mode, bruteI, bruteJ, checkL, checkR, isChecking, centerI, centerType, expandL, expandR, isExpanding]);
+
+        // --- 核心算法 ---
+        const stepForward = () => {
+            if (isFinished) return;
+            if (mode === 'brute') stepBrute();
+            else stepCenter();
+        };
+
+        // 1. 暴力法
+        const stepBrute = () => {
+            // 如果正在检查一个子串是否为回文
+            if (isChecking) {
+                if (checkL >= checkR) {
+                    // 检查完成：是回文
+                    const currentLen = bruteJ - bruteI + 1;
+                    let msg = `子串 [${bruteI}, ${bruteJ}] 是回文。`;
+                    if (currentLen > maxRange.len) {
+                        setMaxRange({ start: bruteI, end: bruteJ, len: currentLen });
+                        msg += ` 🎯 更新最大长度为 ${currentLen}`;
+                    }
+                    setMessage(msg);
+                    setIsChecking(false);
+                    advanceBruteIndices();
+                } else if (str[checkL] !== str[checkR]) {
+                    // 检查失败：不是回文
+                    setMessage(`子串 [${bruteI}, ${bruteJ}] 首尾 '${str[checkL]}' != '${str[checkR]}'，不是回文。`);
+                    setIsChecking(false);
+                    advanceBruteIndices();
+                } else {
+                    // 匹配，继续向内
+                    setMessage(`检查 [${checkL}, ${checkR}]: '${str[checkL]}' == '${str[checkR]}'，向内收缩。`);
+                    setCheckL(checkL + 1);
+                    setCheckR(checkR - 1);
+                }
+                return;
+            }
+
+            // 开始检查新子串
+            if (bruteI >= str.length) {
+                setIsFinished(true);
+                setIsPlaying(false);
+                setMessage(`遍历结束。最长回文子串长度: ${maxRange.len}`);
+                return;
+            }
+
+            // 初始化检查状态
+            setMessage(`开始检查子串 [${bruteI}, ${bruteJ}]...`);
+            setCheckL(bruteI);
+            setCheckR(bruteJ);
+            setIsChecking(true);
+        };
+
+        const advanceBruteIndices = () => {
+            let nextJ = bruteJ + 1;
+            if (nextJ >= str.length) {
+                let nextI = bruteI + 1;
+                setBruteI(nextI);
+                setBruteJ(nextI); // 重置J到I的位置
+            } else {
+                setBruteJ(nextJ);
+            }
+        };
+
+        // 2. 中心扩散法
+        const stepCenter = () => {
+            if (centerI >= str.length) {
+                setIsFinished(true);
+                setIsPlaying(false);
+                setMessage(`遍历结束。最长回文子串长度: ${maxRange.len}`);
+                setExpandL(-1); setExpandR(-1);
+                return;
+            }
+
+            // 正在扩散中
+            if (isExpanding) {
+                const l = expandL;
+                const r = expandR;
+
+                if (l >= 0 && r < str.length && str[l] === str[r]) {
+                    // 匹配，更新最大值并尝试继续扩散
+                    const currentLen = r - l + 1;
+                    let msg = `中心扩张 [${l}, ${r}]: '${str[l]}' == '${str[r]}' (匹配)。`;
+
+                    if (currentLen > maxRange.len) {
+                        setMaxRange({ start: l, end: r, len: currentLen });
+                        msg += ` 🎯 更新最大长度: ${currentLen}`;
+                    }
+                    setMessage(msg);
+                    setExpandL(l - 1);
+                    setExpandR(r + 1);
+                } else {
+                    // 停止扩散
+                    setMessage(`中心扩张 [${l}, ${r}]: 越界或字符不匹配，停止当前中心。`);
+                    setIsExpanding(false);
+                    advanceCenter();
+                }
+            } else {
+                // 初始化扩散起点
+                // Type 0: 奇数长度 (l=i, r=i)
+                // Type 1: 偶数长度 (l=i, r=i+1)
+                let l, r;
+                let msg = "";
+                if (centerType === 0) {
+                    l = centerI;
+                    r = centerI;
+                    msg = `选取中心 '${str[centerI]}' (索引 ${centerI})，寻找奇数长度回文。`;
+                } else {
+                    l = centerI;
+                    r = centerI + 1;
+                    msg = `选取空隙中心 (${centerI}, ${centerI+1})，寻找偶数长度回文。`;
+                }
+                setMessage(msg);
+                setExpandL(l);
+                setExpandR(r);
+                setIsExpanding(true);
+            }
+        };
+
+        const advanceCenter = () => {
+            if (centerType === 0) {
+                setCenterType(1); // 切换到偶数模式
+            } else {
+                setCenterType(0); // 切换回奇数模式
+                setCenterI(centerI + 1); // 移动到下一个字符
+            }
+        };
+
+        // --- 渲染逻辑 ---
+        const getCellClass = (index) => {
+            let base = "w-10 h-10 flex items-center justify-center border rounded-lg font-mono text-lg font-bold relative cell-transition ";
+
+            // 默认样式
+            base += "bg-white border-slate-200 text-slate-400 ";
+
+            // 全局最优解高亮 (绿色)
+            if (index >= maxRange.start && index <= maxRange.end) {
+                base = base.replace("bg-white", "bg-green-50");
+                base = base.replace("border-slate-200", "border-green-400");
+                base = base.replace("text-slate-400", "text-green-700");
+            }
+
+            // 算法过程高亮
+            if (mode === 'brute') {
+                if (isChecking && index >= checkL && index <= checkR) {
+                    // 正在检查的收缩区间
+                    base = base.replace("bg-green-50", "bg-fuchsia-50"); // 覆盖最优解颜色
+                    base += " ring-2 ring-fuchsia-200 border-fuchsia-400 text-fuchsia-800 ";
+                } else if (index >= bruteI && index <= bruteJ) {
+                    // 当前选定的子串范围
+                    base += " bg-slate-100 ";
+                }
+            } else {
+                // Center mode
+                if (isExpanding) {
+                    // 扩散区间的高亮 (注意 expandL/R 已经是“下一步”的值，所以要回退一步展示当前匹配的区间)
+                    // 但为了动画流畅，我们直接判断当前 expandL+1 到 expandR-1 的范围是已匹配的
+                    // 这里我们简单高亮正在尝试比较的两个端点
+
+                    const tryL = expandL;
+                    const tryR = expandR;
+
+                    // 已经确定的回文范围 (上一帧的状态)
+                    if (index > tryL && index < tryR) {
+                        base = base.replace("bg-green-50", "bg-fuchsia-50");
+                        base += " bg-fuchsia-50 border-fuchsia-300 text-fuchsia-800 ";
+                    }
+
+                    // 当前正在比较的两个点
+                    if (index === tryL || index === tryR) {
+                        base += " bg-yellow-100 border-yellow-400 text-yellow-800 transform scale-110 z-10 shadow-sm ";
+                    }
+                }
+            }
+
+            return base;
+        };
+
+        return (
+            <div className="max-w-3xl mx-auto p-4 sm:p-6">
+                {/* 1. 顶部：输入配置区 */}
+                <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4 mb-6">
+                    <div className="flex items-center gap-2 mb-3 text-slate-700 font-bold">
+                        <Icons.Settings />
+                        <span>数据配置</span>
+                    </div>
+                    <div className="flex flex-col sm:flex-row gap-3">
+                        <input
+                            type="text"
+                            value={inputStr}
+                            onChange={(e) => setInputStr(e.target.value)}
+                            className="flex-1 border border-slate-300 rounded-lg px-3 py-2 font-mono focus:outline-none focus:ring-2 focus:ring-fuchsia-500 text-sm"
+                            placeholder="输入字符串..."
+                        />
+                        <div className="flex gap-2">
+                            <button onClick={loadInput} className="px-4 py-2 bg-fuchsia-600 text-white rounded-lg hover:bg-fuchsia-700 transition font-medium text-sm">
+                                加载
+                            </button>
+                            <button onClick={randomInput} className="px-3 py-2 bg-slate-100 text-slate-600 rounded-lg hover:bg-slate-200 transition" title="随机生成">
+                                <Icons.Shuffle />
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                {/* 2. 算法控制区 */}
+                <div className="bg-white rounded-xl shadow-lg border border-slate-200 overflow-hidden">
+                    {/* Header */}
+                    <div className="border-b border-slate-100 bg-slate-50 p-4 flex flex-col sm:flex-row justify-between items-center gap-4">
+                        <div>
+                            <h1 className="text-xl font-bold text-slate-800">最长回文子串</h1>
+                            <p className="text-xs text-slate-500 mt-1">寻找字符串中最长的对称子串 (LeetCode 5)</p>
+                        </div>
+                        <div className="flex bg-slate-200 p-1 rounded-lg">
+                            <button
+                                onClick={() => { setMode('brute'); reset(); }}
+                                className={`px-3 py-1.5 text-sm rounded-md transition-all font-medium ${mode === 'brute' ? 'bg-white text-fuchsia-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                            >
+                                暴力法 O(N³)
+                            </button>
+                            <button
+                                onClick={() => { setMode('center'); reset(); }}
+                                className={`px-3 py-1.5 text-sm rounded-md transition-all font-medium ${mode === 'center' ? 'bg-white text-green-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                            >
+                                中心扩散法 O(N²)
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Canvas */}
+                    <div className="p-8 flex flex-col items-center justify-center bg-slate-50 min-h-[260px]">
+
+                        {/* Result Panel */}
+                        <div className="flex justify-center gap-8 mb-8 w-full">
+                            <div className="flex flex-col items-center">
+                                <span className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Max Length</span>
+                                <span className="text-3xl font-black text-slate-800">{maxRange.len}</span>
+                            </div>
+                            <div className="w-px bg-slate-200 h-10"></div>
+                            <div className="flex flex-col items-center">
+                                <span className="text-xs font-bold text-green-600 uppercase tracking-wider mb-1">Best Substring</span>
+                                <span className="text-xl font-mono font-bold text-green-600">
+                                    {maxRange.len > 0 ? str.substring(maxRange.start, maxRange.end + 1) : '-'}
+                                </span>
+                            </div>
+                        </div>
+
+                        {/* String Visualization */}
+                        <div className="flex flex-wrap justify-center gap-2 sm:gap-2 mb-6">
+                            {str.split('').map((char, idx) => (
+                                <div key={idx} className="flex flex-col items-center group">
+                                    <div className={getCellClass(idx)}>
+                                        {char}
+
+                                        {/* Center Indicators */}
+                                        {mode === 'center' && !isFinished && (
+                                            <>
+                                                {/* Odd Center Indicator */}
+                                                {centerType === 0 && idx === centerI && (
+                                                    <div className="absolute -top-2 w-1.5 h-1.5 bg-blue-500 rounded-full animate-ping"></div>
+                                                )}
+                                                {/* Even Center Indicator */}
+                                                {centerType === 1 && idx === centerI && (
+                                                    <div className="absolute -right-1 top-1/2 -translate-y-1/2 w-1 h-8 bg-blue-400/50 rounded-full z-20"></div>
+                                                )}
+                                            </>
+                                        )}
+                                    </div>
+                                    <span className="text-[10px] text-slate-300 mt-2 font-mono">{idx}</span>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+
+                    {/* Controls */}
+                    <div className="border-t border-slate-100 p-4 bg-white">
+                        <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+                            {/* Message */}
+                            <div className="flex-1 bg-fuchsia-50 text-fuchsia-900 px-4 py-3 rounded-lg text-sm border-l-4 border-fuchsia-500 w-full sm:w-auto transition-colors">
+                                {message}
+                            </div>
+
+                            {/* Buttons */}
+                            <div className="flex items-center gap-2">
+                                <button onClick={() => setIsPlaying(!isPlaying)} disabled={isFinished} className={`flex items-center gap-2 px-4 py-2 rounded-lg text-white font-medium transition ${isPlaying ? 'bg-slate-500 hover:bg-slate-600' : 'bg-fuchsia-600 hover:bg-fuchsia-700'} disabled:opacity-50 disabled:bg-slate-300`}>
+                                    {isPlaying ? <Icons.Pause /> : <Icons.Play />}
+                                    <span className="hidden sm:inline">{isPlaying ? "暂停" : "运行"}</span>
+                                </button>
+                                <button onClick={stepForward} disabled={isPlaying || isFinished} className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 font-medium transition disabled:opacity-50">
+                                    <Icons.Step />
+                                    <span className="hidden sm:inline">单步</span>
+                                </button>
+                                <button onClick={() => reset()} className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition" title="重置">
+                                    <Icons.Reset />
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        );
+    };
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+</script>
+</body>
+</html>

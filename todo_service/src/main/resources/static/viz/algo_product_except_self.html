@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>除自身以外数组的乘积 - 算法可视化</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <style>
+        body { background-color: #f8fafc; font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; }
+        .cell-transition { transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1); }
+        .fade-in { animation: fadeIn 0.5s ease-out forwards; }
+        .slide-up { animation: slideUp 0.3s ease-out forwards; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes slideUp { from { transform: translateY(10px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+        .grid-cols-custom { display: grid; grid-template-columns: repeat(var(--cols), minmax(0, 1fr)); }
+    </style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel">
+    const { useState, useEffect, useRef } = React;
+
+    // --- 图标组件 ---
+    const Icons = {
+        Play: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>,
+        Pause: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>,
+        Step: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>,
+        Reset: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 12" /><path d="M3 3v9h9" /></svg>,
+        Settings: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>,
+        Shuffle: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="16 3 21 3 21 8"></polyline><line x1="4" y1="20" x2="21" y2="3"></line><polyline points="21 16 21 21 16 21"></polyline><line x1="15" y1="15" x2="21" y2="21"></line><line x1="4" y1="4" x2="9" y2="9"></line></svg>,
+        Columns: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3h7a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-7m0-18H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h7m0-18v18"></path></svg>,
+        Zap: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
+    };
+
+    const App = () => {
+        // --- 状态定义 ---
+        const [inputStr, setInputStr] = useState("1, 2, 3, 4");
+        const [nums, setNums] = useState([1, 2, 3, 4]);
+
+        const [mode, setMode] = useState("table"); // 'table' | 'optimal'
+        const [isPlaying, setIsPlaying] = useState(false);
+        const [isFinished, setIsFinished] = useState(false);
+        const [message, setMessage] = useState("准备就绪");
+
+        // 算法状态
+        // 模式1: Table (Prefix L, Suffix R, Result)
+        const [L, setL] = useState([]);
+        const [R, setR] = useState([]);
+        const [res, setRes] = useState([]);
+        const [phase, setPhase] = useState("L"); // 'L', 'R', 'RES' (for Table) or 'FWD', 'BWD' (for Optimal)
+        const [idx, setIdx] = useState(0);
+
+        // 模式2: Optimal (Result as Prefix, Running R)
+        const [runningR, setRunningR] = useState(1);
+
+        // --- 初始化 ---
+        const parseInput = () => {
+            try {
+                const arr = inputStr.split(/[,，\s]+/).filter(v => v.trim() !== "").map(Number);
+                if (arr.length < 2) throw new Error("数组长度至少为 2");
+                setNums(arr);
+                resetState(arr);
+                setMessage(`数据已加载。长度: ${arr.length}`);
+            } catch (e) {
+                setMessage("输入错误: " + e.message);
+            }
+        };
+
+        const resetState = (arr = nums) => {
+            setIsPlaying(false);
+            setIsFinished(false);
+            setMessage("状态已重置");
+
+            // Initialize arrays
+            const n = arr.length;
+            if (mode === "table") {
+                setL(new Array(n).fill(null));
+                setR(new Array(n).fill(null));
+                setRes(new Array(n).fill(null));
+                setPhase("L");
+                setIdx(0);
+            } else {
+                setRes(new Array(n).fill(1)); // Initial 1s or just uninitialized logic
+                setRunningR(1);
+                setPhase("FWD");
+                setIdx(0);
+            }
+        };
+
+        const randomInput = () => {
+            const len = 4 + Math.floor(Math.random() * 3); // 4-6
+            const arr = Array.from({length: len}, () => Math.floor(Math.random() * 5) + 1);
+            setInputStr(arr.join(", "));
+            setNums(arr);
+            resetState(arr);
+            setMessage("已生成随机数组。");
+        };
+
+        // 切换模式重置
+        useEffect(() => {
+            resetState();
+        }, [mode]);
+
+        // --- 自动播放 ---
+        useEffect(() => {
+            let timer;
+            if (isPlaying && !isFinished) {
+                timer = setInterval(() => {
+                    stepForward();
+                }, 800);
+            }
+            return () => clearInterval(timer);
+        }, [isPlaying, isFinished, mode, phase, idx, L, R, res, runningR]);
+
+        const stepForward = () => {
+            if (isFinished) return;
+
+            if (mode === "table") {
+                stepTable();
+            } else {
+                stepOptimal();
+            }
+        };
+
+        // 1. 左右乘积列表法 O(N) Space
+        const stepTable = () => {
+            const n = nums.length;
+            let nextL = [...L];
+            let nextR = [...R];
+            let nextRes = [...res];
+
+            if (phase === "L") {
+                // 构建左乘积数组 L[i] = nums[0]...nums[i-1]
+                // L[0] = 1
+                if (idx === 0) {
+                    nextL[0] = 1;
+                    setL(nextL);
+                    setMessage(`[前缀积] L[0] 初始化为 1 (左侧无元素)。`);
+                    setIdx(1);
+                } else if (idx < n) {
+                    nextL[idx] = nextL[idx-1] * nums[idx-1];
+                    setL(nextL);
+                    setMessage(`[前缀积] L[${idx}] = L[${idx-1}] (${nextL[idx-1]}) × nums[${idx-1}] (${nums[idx-1]}) = ${nextL[idx]}`);
+                    setIdx(idx + 1);
+                } else {
+                    // Switch to R
+                    setPhase("R");
+                    setIdx(n - 1);
+                    // Init R last element
+                    // R logic: R[i] = R[i+1] * nums[i+1]
+                    // Need to handle init R first in next tick? No, let's do it seamlessly.
+                    // We will process R from right to left.
+                    // R[n-1] = 1 (init first step of R phase)
+                    // Actually let's let the loop handle it.
+                    // We'll set idx to n-1, and do logic in next call.
+                    // But wait, the first step of R needs to set R[n-1] = 1.
+                    // Let's do a tiny step or handle in 'if'.
+                    // Let's stick to: Phase switch just sets up pointers.
+                    setMessage("前缀积计算完毕。开始计算后缀积 (从右向左)。");
+                }
+            }
+            else if (phase === "R") {
+                if (idx === n - 1 && R[n-1] === null) {
+                    nextR[n-1] = 1;
+                    setR(nextR);
+                    setMessage(`[后缀积] R[${n-1}] 初始化为 1 (右侧无元素)。`);
+                    setIdx(n - 2);
+                } else if (idx >= 0) {
+                    nextR[idx] = nextR[idx+1] * nums[idx+1];
+                    setR(nextR);
+                    setMessage(`[后缀积] R[${idx}] = R[${idx+1}] (${nextR[idx+1]}) × nums[${idx+1}] (${nums[idx+1]}) = ${nextR[idx]}`);
+                    setIdx(idx - 1);
+                } else {
+                    setPhase("RES");
+                    setIdx(0);
+                    setMessage("后缀积计算完毕。合并结果: Res[i] = L[i] × R[i]。");
+                }
+            }
+            else if (phase === "RES") {
+                if (idx < n) {
+                    nextRes[idx] = L[idx] * R[idx];
+                    setRes(nextRes);
+                    setMessage(`[结果] Res[${idx}] = L[${idx}] (${L[idx]}) × R[${idx}] (${R[idx]}) = ${nextRes[idx]}`);
+                    setIdx(idx + 1);
+                } else {
+                    setIsFinished(true);
+                    setIsPlaying(false);
+                    setMessage("计算完成！");
+                }
+            }
+        };
+
+        // 2. 空间优化法 O(1) Space
+        const stepOptimal = () => {
+            const n = nums.length;
+            let nextRes = [...res];
+
+            if (phase === "FWD") {
+                // Pass 1: Build Prefix Product directly into Result
+                if (idx === 0) {
+                    nextRes[0] = 1;
+                    setRes(nextRes);
+                    setMessage(`[第一遍: 前缀] 初始化 Res[0] = 1。`);
+                    setIdx(1);
+                } else if (idx < n) {
+                    nextRes[idx] = nextRes[idx-1] * nums[idx-1];
+                    setRes(nextRes);
+                    setMessage(`[第一遍: 前缀] Res[${idx}] = Res[${idx-1}] (${nextRes[idx-1]}) × nums[${idx-1}] (${nums[idx-1]}) = ${nextRes[idx]}`);
+                    setIdx(idx + 1);
+                } else {
+                    setPhase("BWD");
+                    setIdx(n - 1);
+                    setRunningR(1);
+                    setMessage("前缀积已存入结果数组。开始反向遍历乘后缀积 (使用临时变量 R)。");
+                }
+            }
+            else if (phase === "BWD") {
+                if (idx >= 0) {
+                    // Current logic: Res[i] = Res[i] * R
+                    const oldVal = nextRes[idx];
+                    nextRes[idx] = nextRes[idx] * runningR;
+                    setRes(nextRes);
+
+                    let msg = `[第二遍: 后缀] Res[${idx}] *= R (${runningR}) ➔ ${nextRes[idx]}。`;
+
+                    // Update R for next step
+                    if (idx > 0) {
+                        const nextR = runningR * nums[idx];
+                        setRunningR(nextR);
+                        msg += ` 更新 R = R × nums[${idx}] (${nums[idx]}) = ${nextR}。`;
+                    }
+
+                    setMessage(msg);
+                    setIdx(idx - 1);
+                } else {
+                    setIsFinished(true);
+                    setIsPlaying(false);
+                    setMessage("计算完成！空间复杂度 O(1)。");
+                }
+            }
+        };
+
+        // --- 渲染辅助 ---
+        const getCellClass = (val, type, index) => {
+            let base = "w-12 h-12 flex items-center justify-center border rounded font-mono font-bold text-lg relative transition-all duration-300 ";
+            let bg = "bg-white border-slate-200 text-slate-500";
+
+            // Active highlighting
+            if (mode === "table") {
+                if (type === 'L' && phase === 'L' && index === idx - 1) bg = "bg-blue-100 border-blue-500 text-blue-700 scale-110 shadow-md";
+                if (type === 'R' && phase === 'R' && index === idx + 1) bg = "bg-orange-100 border-orange-500 text-orange-700 scale-110 shadow-md";
+                if (type === 'RES' && phase === 'RES' && index === idx - 1) bg = "bg-green-100 border-green-500 text-green-700 scale-110 shadow-md";
+            } else {
+                if (type === 'RES') {
+                    if (phase === 'FWD' && index === idx - 1) bg = "bg-blue-100 border-blue-500 text-blue-700 scale-110";
+                    if (phase === 'BWD' && index === idx + 1) bg = "bg-purple-100 border-purple-500 text-purple-700 scale-110 shadow-md"; // idx has moved to left, so +1 was just processed
+                }
+            }
+
+            // Value validity check for display
+            const displayVal = val === null ? '' : val;
+
+            return { className: base + bg, val: displayVal };
+        };
+
+        return (
+            <div className="max-w-4xl mx-auto p-6">
+                {/* 1. 配置区 */}
+                <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4 mb-6">
+                    <div className="flex items-center gap-2 mb-3 text-slate-700 font-bold">
+                        <Icons.Settings />
+                        <span>数据配置</span>
+                    </div>
+                    <div className="flex flex-col sm:flex-row gap-4">
+                        <div className="flex-1">
+                            <label className="text-xs text-slate-400 font-bold ml-1 mb-1 block">输入数组 (Nums)</label>
+                            <input
+                                type="text"
+                                value={inputStr}
+                                onChange={(e) => setInputStr(e.target.value)}
+                                className="w-full border border-slate-300 rounded-lg px-3 py-2 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                placeholder="1, 2, 3, 4"
+                            />
+                        </div>
+                        <div className="flex items-end gap-2">
+                            <button onClick={parseInput} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-medium text-sm h-[42px]">
+                                加载
+                            </button>
+                            <button onClick={randomInput} className="px-3 py-2 bg-slate-100 text-slate-600 rounded-lg hover:bg-slate-200 transition h-[42px]" title="随机">
+                                <Icons.Shuffle />
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                {/* 2. 主区域 */}
+                <div className="bg-white rounded-xl shadow-lg border border-slate-200 overflow-hidden">
+                    {/* Header */}
+                    <div className="border-b border-slate-100 bg-slate-50 p-4 flex flex-col sm:flex-row justify-between items-center gap-4">
+                        <div>
+                            <h1 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+                                <Icons.Columns /> 除自身以外数组的乘积
+                            </h1>
+                            <p className="text-xs text-slate-500 mt-1">计算每个位置左边乘积与右边乘积的乘积。</p>
+                        </div>
+                        <div className="flex bg-slate-200 p-1 rounded-lg">
+                            <button
+                                onClick={() => setMode('table')}
+                                className={`px-3 py-1.5 text-sm rounded-md transition-all font-medium flex items-center gap-1 ${mode === 'table' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                            >
+                                <Icons.Columns size={14}/> 左右乘积列表 O(N) Space
+                            </button>
+                            <button
+                                onClick={() => setMode('optimal')}
+                                className={`px-3 py-1.5 text-sm rounded-md transition-all font-medium flex items-center gap-1 ${mode === 'optimal' ? 'bg-white text-purple-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                            >
+                                <Icons.Zap size={14}/> 空间优化 O(1) Space
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Visualization Canvas */}
+                    <div className="p-8 bg-slate-50 min-h-[300px] flex flex-col gap-6 items-center">
+
+                        {/* Grid Layout Container */}
+                        <div className="grid gap-y-4 gap-x-2" style={{
+                            display: 'grid',
+                            gridTemplateColumns: `80px repeat(${nums.length}, minmax(40px, 50px))`,
+                            alignItems: 'center'
+                        }}>
+                            {/* Header Row (Indices) */}
+                            <div className="text-xs text-right pr-4 text-slate-300 font-mono">Index</div>
+                            {nums.map((_, i) => (
+                                <div key={i} className="text-center text-xs text-slate-300 font-mono">{i}</div>
+                            ))}
+
+                            {/* Input Row */}
+                            <div className="text-xs font-bold text-right pr-4 text-slate-500">Nums</div>
+                            {nums.map((n, i) => (
+                                <div key={i} className="w-12 h-12 flex items-center justify-center border border-slate-200 rounded bg-white font-bold text-slate-700 shadow-sm">
+                                    {n}
+                                </div>
+                            ))}
+
+                            {/* Table Mode Visualization */}
+                            {mode === 'table' && (
+                                <>
+                                    {/* Divider */}
+                                    <div className="col-span-full h-px bg-slate-200 my-1"></div>
+
+                                    {/* Left Array */}
+                                    <div className="text-xs font-bold text-right pr-4 text-blue-500">Left (前缀)</div>
+                                    {L.map((val, i) => {
+                                        const style = getCellClass(val, 'L', i);
+                                        return (
+                                            <div key={i} className={style.className}>{style.val}</div>
+                                        );
+                                    })}
+
+                                    {/* Right Array */}
+                                    <div className="text-xs font-bold text-right pr-4 text-orange-500">Right (后缀)</div>
+                                    {R.map((val, i) => {
+                                        const style = getCellClass(val, 'R', i);
+                                        return (
+                                            <div key={i} className={style.className}>{style.val}</div>
+                                        );
+                                    })}
+
+                                    {/* Divider */}
+                                    <div className="col-span-full h-px bg-slate-200 my-1"></div>
+
+                                    {/* Result Array */}
+                                    <div className="text-xs font-bold text-right pr-4 text-green-600">Result</div>
+                                    {res.map((val, i) => {
+                                        const style = getCellClass(val, 'RES', i);
+                                        return (
+                                            <div key={i} className={style.className}>{style.val}</div>
+                                        );
+                                    })}
+                                </>
+                            )}
+
+                            {/* Optimal Mode Visualization */}
+                            {mode === 'optimal' && (
+                                <>
+                                    {/* Divider */}
+                                    <div className="col-span-full h-px bg-slate-200 my-1"></div>
+
+                                    {/* Result Array (Acts as Left then Total) */}
+                                    <div className="text-xs font-bold text-right pr-4 text-purple-600">Result</div>
+                                    {res.map((val, i) => {
+                                        const style = getCellClass(val, 'RES', i);
+                                        return (
+                                            <div key={i} className={style.className}>{style.val}</div>
+                                        );
+                                    })}
+
+                                    {/* Running R Variable Display */}
+                                    {phase === 'BWD' && (
+                                        <div className="col-span-full mt-4 flex justify-center">
+                                            <div className="bg-purple-50 border border-purple-200 text-purple-800 px-4 py-2 rounded-full flex items-center gap-2 shadow-sm animate-bounce">
+                                                <span className="text-xs font-bold uppercase">Running R (后缀积)</span>
+                                                <span className="text-xl font-bold font-mono">{runningR}</span>
+                                            </div>
+                                        </div>
+                                    )}
+                                </>
+                            )}
+                        </div>
+
+                    </div>
+
+                    {/* Controls */}
+                    <div className="border-t border-slate-100 p-4 bg-white">
+                        <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+                            <div className="flex-1 bg-blue-50 text-blue-800 px-4 py-3 rounded-lg text-sm border-l-4 border-blue-500 w-full sm:w-auto shadow-sm transition-all">
+                                {message}
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <button onClick={() => setIsPlaying(!isPlaying)} disabled={isFinished} className={`flex items-center gap-2 px-4 py-2 rounded-lg text-white font-medium transition ${isPlaying ? 'bg-red-500 hover:bg-red-600' : 'bg-blue-600 hover:bg-blue-700'} disabled:opacity-50`}>
+                                    {isPlaying ? <Icons.Pause /> : <Icons.Play />}
+                                    <span className="hidden sm:inline">{isPlaying ? "暂停" : "自动"}</span>
+                                </button>
+                                <button onClick={stepForward} disabled={isPlaying || isFinished} className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 font-medium transition disabled:opacity-50">
+                                    <Icons.Step />
+                                    <span className="hidden sm:inline">单步</span>
+                                </button>
+                                <button onClick={() => resetState()} className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition">
+                                    <Icons.Reset />
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        );
+    };
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+</script>
+</body>
+</html>

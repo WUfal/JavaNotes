@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>反转链表 - 算法可视化</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <style>
+        body { background-color: #f8fafc; font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; }
+        .node-transition { transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1); }
+        .arrow-transition { transition: all 0.5s ease-in-out; }
+    </style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel">
+    const { useState, useEffect, useRef } = React;
+
+    // --- 图标组件 ---
+    const Icons = {
+        Play: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>,
+        Pause: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>,
+        Step: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>,
+        Reset: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 12" /><path d="M3 3v9h9" /></svg>,
+        Settings: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>,
+        Shuffle: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="16 3 21 3 21 8"></polyline><line x1="4" y1="20" x2="21" y2="3"></line><polyline points="21 16 21 21 16 21"></polyline><line x1="15" y1="15" x2="21" y2="21"></line><line x1="4" y1="4" x2="9" y2="9"></line></svg>,
+        ArrowRight: () => <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>,
+        ArrowLeft: () => <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
+    };
+
+    const App = () => {
+        // --- 状态定义 ---
+        const [inputStr, setInputStr] = useState("1,2,3,4,5");
+        const [mode, setMode] = useState("iterative"); // 'stack' | 'iterative'
+
+        // 链表数据结构
+        const [nodes, setNodes] = useState([]);
+
+        // 运行状态
+        const [isPlaying, setIsPlaying] = useState(false);
+        const [isFinished, setIsFinished] = useState(false);
+        const [message, setMessage] = useState("准备就绪");
+
+        // 迭代法指针
+        const [prev, setPrev] = useState(null);
+        const [curr, setCurr] = useState(0);
+
+        // 栈/值交换法状态
+        const [stack, setStack] = useState([]);
+        const [stackIndex, setStackIndex] = useState(0);
+        const [phase, setPhase] = useState('collecting');
+
+        // --- 初始化/重置 ---
+        const initList = (str) => {
+            const values = str.split(/[,，\s]+/).filter(v => v.trim() !== "");
+            if (values.length === 0) return;
+
+            const newNodes = values.map((v, i) => ({
+                id: i,
+                val: v,
+                next: i < values.length - 1 ? i + 1 : null
+            }));
+
+            setNodes(newNodes);
+            resetState(newNodes);
+        };
+
+        const resetState = (currentNodes = nodes) => {
+            setIsPlaying(false);
+            setIsFinished(false);
+            setMessage("状态已重置");
+
+            // Iterative Reset
+            setPrev(null);
+            setCurr(0);
+
+            // Stack Reset
+            setStack([]);
+            setStackIndex(0);
+            setPhase('collecting');
+        };
+
+        useEffect(() => {
+            initList(inputStr);
+        }, []);
+
+        const loadInput = () => {
+            initList(inputStr);
+            setMessage(`已加载链表: [${inputStr}]`);
+        };
+
+        const randomInput = () => {
+            const len = 4 + Math.floor(Math.random() * 4);
+            const arr = Array.from({length: len}, () => Math.floor(Math.random() * 99) + 1);
+            const str = arr.join(",");
+            setInputStr(str);
+            initList(str);
+            setMessage(`已生成随机链表: [${str}]`);
+        };
+
+        useEffect(() => {
+            let timer;
+            if (isPlaying && !isFinished) {
+                timer = setInterval(() => {
+                    stepForward();
+                }, 1000);
+            }
+            return () => clearInterval(timer);
+        }, [isPlaying, isFinished, mode, nodes, prev, curr, stack, stackIndex, phase]);
+
+        const stepForward = () => {
+            if (isFinished) return;
+            if (mode === 'stack') {
+                stepStack();
+            } else {
+                stepIterative();
+            }
+        };
+
+        // 1. 栈/值交换法 (修复了 Stack 弹出逻辑)
+        const stepStack = () => {
+            if (phase === 'collecting') {
+                if (stackIndex < nodes.length) {
+                    const val = nodes[stackIndex].val;
+                    const newStack = [...stack, val];
+                    setStack(newStack);
+                    setMessage(`收集阶段: 访问节点 ${val}，压入栈中。`);
+                    setStackIndex(stackIndex + 1);
+                } else {
+                    setPhase('updating');
+                    setStackIndex(0);
+                    setMessage("收集完毕。开始出栈并更新链表节点值。");
+                }
+            }
+            else if (phase === 'updating') {
+                if (stack.length > 0) { // 只要栈不为空
+                    const newNodes = [...nodes];
+                    const popVal = stack[stack.length - 1]; // 取栈顶
+                    const newStack = stack.slice(0, -1); // 🌟 修复：从状态中移除栈顶元素
+
+                    // 更新值
+                    newNodes[stackIndex] = { ...newNodes[stackIndex], val: popVal };
+                    setNodes(newNodes);
+                    setStack(newStack); // 更新栈 UI
+
+                    setMessage(`更新阶段: 栈顶元素 ${popVal} 弹出，写入当前节点。`);
+                    setStackIndex(stackIndex + 1);
+                } else {
+                    setIsFinished(true);
+                    setIsPlaying(false);
+                    setMessage("反转完成！(注意：此方法只改变了值，未改变指针)");
+                }
+            }
+        };
+
+        // 2. 双指针迭代法
+        const stepIterative = () => {
+            if (curr === null) {
+                setIsFinished(true);
+                setIsPlaying(false);
+                setMessage("反转完成！Prev 指向新的头节点。");
+                return;
+            }
+
+            const currentNode = nodes[curr];
+            const nextNodeId = currentNode.next;
+
+            const newNodes = [...nodes];
+            newNodes[curr] = { ...currentNode, next: prev };
+
+            setNodes(newNodes);
+            setMessage(`反转指针: 节点 ${currentNode.val} 的 next 指向 ${prev === null ? 'NULL' : nodes[prev].val}。Prev/Curr 前移。`);
+
+            setPrev(curr);
+            setCurr(nextNodeId);
+        };
+
+        return (
+            <div className="max-w-4xl mx-auto p-6">
+                {/* 配置区 */}
+                <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4 mb-6">
+                    <div className="flex items-center gap-2 mb-3 text-slate-700 font-bold">
+                        <Icons.Settings />
+                        <span>数据配置</span>
+                    </div>
+                    <div className="flex flex-col sm:flex-row gap-3">
+                        <input
+                            type="text"
+                            value={inputStr}
+                            onChange={(e) => setInputStr(e.target.value)}
+                            className="flex-1 border border-slate-300 rounded-lg px-3 py-2 font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            placeholder="输入数字，如: 1,2,3,4,5"
+                        />
+                        <div className="flex gap-2">
+                            <button onClick={loadInput} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-medium text-sm">
+                                加载
+                            </button>
+                            <button onClick={randomInput} className="px-3 py-2 bg-slate-100 text-slate-600 rounded-lg hover:bg-slate-200 transition" title="随机生成">
+                                <Icons.Shuffle />
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                {/* 控制区 */}
+                <div className="bg-white rounded-xl shadow-lg border border-slate-200 overflow-hidden">
+                    <div className="border-b border-slate-100 bg-slate-50 p-4 flex flex-col sm:flex-row justify-between items-center gap-4">
+                        <div>
+                            <h1 className="text-xl font-bold text-slate-800">反转链表 (Reverse Linked List)</h1>
+                            <p className="text-xs text-slate-500 mt-1">将单链表的连接方向逆转。</p>
+                        </div>
+                        <div className="flex bg-slate-200 p-1 rounded-lg">
+                            <button
+                                onClick={() => { setMode('stack'); resetState(); }}
+                                className={`px-3 py-1.5 text-sm rounded-md transition-all font-medium ${mode === 'stack' ? 'bg-white text-orange-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                            >
+                                栈/值交换 O(N) Space
+                            </button>
+                            <button
+                                onClick={() => { setMode('iterative'); resetState(); }}
+                                className={`px-3 py-1.5 text-sm rounded-md transition-all font-medium ${mode === 'iterative' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                            >
+                                双指针迭代 O(1) Space
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* 绘图区 */}
+                    <div className="p-8 flex flex-col items-center justify-center bg-slate-50 min-h-[300px] relative overflow-hidden">
+
+                        {/* 栈容器 */}
+                        {mode === 'stack' && (
+                            <div className="absolute top-4 right-4 w-24 border-2 border-slate-300 border-t-0 rounded-b-lg bg-slate-100 p-2 flex flex-col-reverse gap-1 min-h-[100px] transition-all duration-300">
+                                {stack.map((v, i) => (
+                                    <div key={i} className="bg-orange-100 border border-orange-300 text-orange-800 text-center py-1 rounded text-sm animate-in fade-in slide-in-from-top-2">
+                                        {v}
+                                    </div>
+                                ))}
+                                <div className="text-[10px] text-center text-slate-400 absolute -top-5 w-full">Stack</div>
+                            </div>
+                        )}
+
+                        {/* 链表节点 */}
+                        <div className="flex items-center gap-2 sm:gap-6 overflow-x-auto w-full justify-center px-4 py-12">
+                            {nodes.map((node, index) => {
+                                let isCurr = false;
+                                let isPrev = false;
+
+                                if (mode === 'iterative') {
+                                    if (curr === node.id) isCurr = true;
+                                    if (prev === node.id) isPrev = true;
+                                } else {
+                                    if (stackIndex === index && !isFinished) isCurr = true;
+                                }
+
+                                return (
+                                    <div key={node.id} className="relative flex items-center">
+                                        {/* 节点圆形 */}
+                                        <div className={`w-14 h-14 rounded-full border-2 flex items-center justify-center text-xl font-bold z-10 node-transition
+                                                ${isCurr ? 'bg-blue-500 border-blue-600 text-white scale-110 shadow-lg' :
+                                            isPrev ? 'bg-green-100 border-green-400 text-green-800' :
+                                                'bg-white border-slate-300 text-slate-700'}
+                                            `}>
+                                            {node.val}
+                                            {isCurr && <div className="absolute -top-8 text-xs font-bold text-blue-600 bg-blue-100 px-2 py-0.5 rounded shadow-sm">Curr</div>}
+                                            {isPrev && <div className="absolute -bottom-8 text-xs font-bold text-green-600 bg-green-100 px-2 py-0.5 rounded shadow-sm">Prev</div>}
+                                        </div>
+
+                                        {/* 箭头逻辑 */}
+                                        {index < nodes.length - 1 && (
+                                            <div className="w-12 h-8 flex items-center justify-center mx-1 relative">
+                                                {node.next === null ? (
+                                                    <span className="text-slate-300 text-xl font-bold">⊥</span>
+                                                ) : (
+                                                    node.next > node.id ? (
+                                                        <div className="text-slate-300 arrow-transition transform">
+                                                            <Icons.ArrowRight />
+                                                        </div>
+                                                    ) : (
+                                                        <div className="text-blue-500 arrow-transition transform">
+                                                            <Icons.ArrowLeft />
+                                                        </div>
+                                                    )
+                                                )}
+                                            </div>
+                                        )}
+
+                                        {/* 最后一个节点的特殊处理 */}
+                                        {index === nodes.length - 1 && (
+                                            <div className="absolute -right-10 w-8 flex justify-center">
+                                                {node.next === null ? (
+                                                    <span className="text-slate-300 text-xl font-bold">⊥</span>
+                                                ) : (
+                                                    <div className="text-blue-500 absolute right-6 top-4">
+                                                        <Icons.ArrowLeft />
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            })}
+                        </div>
+
+                    </div>
+
+                    {/* 底部信息栏 */}
+                    <div className="border-t border-slate-100 p-4 bg-white">
+                        <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+                            <div className="flex-1 bg-blue-50 text-blue-800 px-4 py-3 rounded-lg text-sm border-l-4 border-blue-500 w-full sm:w-auto">
+                                {message}
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <button onClick={() => setIsPlaying(!isPlaying)} disabled={isFinished} className={`flex items-center gap-2 px-4 py-2 rounded-lg text-white font-medium transition ${isPlaying ? 'bg-red-500 hover:bg-red-600' : 'bg-blue-600 hover:bg-blue-700'} disabled:opacity-50`}>
+                                    {isPlaying ? <Icons.Pause /> : <Icons.Play />}
+                                    <span className="hidden sm:inline">{isPlaying ? "暂停" : "自动"}</span>
+                                </button>
+                                <button onClick={stepForward} disabled={isPlaying || isFinished} className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 font-medium transition disabled:opacity-50">
+                                    <Icons.Step />
+                                    <span className="hidden sm:inline">单步</span>
+                                </button>
+                                <button onClick={() => resetState()} className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition">
+                                    <Icons.Reset />
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        );
+    };
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+</script>
+</body>
+</html>

@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>单词搜索 - 算法可视化</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <style>
+        body { background-color: #f8fafc; font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; }
+        .cell-transition { transition: all 0.3s ease-in-out; }
+        .pop-in { animation: popIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; }
+        .shake { animation: shake 0.4s cubic-bezier(.36,.07,.19,.97) both; }
+        @keyframes popIn { from { transform: scale(0.5); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+        @keyframes shake { 10%, 90% { transform: translate3d(-1px, 0, 0); } 20%, 80% { transform: translate3d(2px, 0, 0); } 30%, 50%, 70% { transform: translate3d(-4px, 0, 0); } 40%, 60% { transform: translate3d(4px, 0, 0); } }
+    </style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel">
+    const { useState, useEffect, useRef, useMemo } = React;
+
+    // --- 图标组件 ---
+    const Icons = {
+        Play: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>,
+        Pause: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>,
+        Step: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>,
+        Reset: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 12" /><path d="M3 3v9h9" /></svg>,
+        Settings: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>,
+        Shuffle: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="16 3 21 3 21 8"></polyline><line x1="4" y1="20" x2="21" y2="3"></line><polyline points="21 16 21 21 16 21"></polyline><line x1="15" y1="15" x2="21" y2="21"></line><line x1="4" y1="4" x2="9" y2="9"></line></svg>,
+        Search: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>,
+        Grid: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="3" y1="15" x2="21" y2="15"></line><line x1="9" y1="3" x2="9" y2="21"></line><line x1="15" y1="3" x2="15" y2="21"></line></svg>
+    };
+
+    const App = () => {
+        // --- 默认配置 ---
+        const defaultBoard = [
+            ['A','B','C','E'],
+            ['S','F','C','S'],
+            ['A','D','E','E']
+        ];
+        const defaultWord = "ABCCED";
+
+        // --- 状态定义 ---
+        const [boardInput, setBoardInput] = useState(JSON.stringify(defaultBoard));
+        const [wordInput, setWordInput] = useState(defaultWord);
+
+        const [board, setBoard] = useState(defaultBoard);
+        const [word, setWord] = useState(defaultWord);
+
+        // 运行状态
+        const [isPlaying, setIsPlaying] = useState(false);
+        const [isFinished, setIsFinished] = useState(false);
+        const [message, setMessage] = useState("准备就绪。请输入网格和目标单词。");
+
+        // 算法状态 (使用 Timeline 模式，因为回溯是递归的，预计算步骤更稳定)
+        const [timeline, setTimeline] = useState([]);
+        const [stepIndex, setStepIndex] = useState(0);
+
+        // 视图状态 (从 timeline[stepIndex] 派生)
+        const [viewState, setViewState] = useState({
+            activeCell: null, // {r, c}
+            pathCells: [], // Array of {r, c}
+            visitedMask: [], // 2D boolean
+            found: false,
+            currentK: 0 // Index in word
+        });
+
+        // --- 预计算算法逻辑 (Pre-calculation) ---
+        const generateTrace = (currentBoard, targetWord) => {
+            const steps = [];
+            const m = currentBoard.length;
+            const n = currentBoard[0].length;
+            const visited = Array(m).fill().map(() => Array(n).fill(false));
+
+            // Helper to record a step
+            const record = (type, r, c, k, path, msg) => {
+                // Deep copy path and visited for visualization snapshot
+                const pathCopy = [...path];
+                // Visited visualization is tricky because it changes.
+                // We can reconstruct visited from path for visualization since visited == path in current DFS branch
+                steps.push({
+                    type, // CHECK, MATCH, BACKTRACK, FOUND, START_SEARCH
+                    r, c, k,
+                    path: pathCopy,
+                    message: msg
+                });
+            };
+
+            let found = false;
+
+            const dfs = (r, c, k, currentPath) => {
+                if (found) return;
+
+                // Step 1: Check boundaries and match
+                // This is usually done before call or at start of call.
+                // Let's visualize the "Enter Cell" event
+                record('CHECK', r, c, k, currentPath, `检查 (${r},${c}) 是否匹配 '${targetWord[k]}'...`);
+
+                if (
+                    r < 0 || r >= m || c < 0 || c >= n ||
+                    visited[r][c] ||
+                    currentBoard[r][c] !== targetWord[k]
+                ) {
+                    // Failed check
+                    if (r >= 0 && r < m && c >= 0 && c < n && visited[r][c]) {
+                        record('BACKTRACK', r, c, k, currentPath, `(${r},${c}) 已访问，回溯。`);
+                    } else if (r >= 0 && r < m && c >= 0 && c < n && currentBoard[r][c] !== targetWord[k]) {
+                        record('BACKTRACK', r, c, k, currentPath, `字符 '${currentBoard[r][c]}' 不等于 '${targetWord[k]}'，回溯。`);
+                    } else {
+                        // Boundary usually filtered before call in loop, but if recursion handles it:
+                        // Visually we might not even highlight out of bounds
+                    }
+                    return false;
+                }
+
+                // Match found
+                visited[r][c] = true;
+                currentPath.push({r, c});
+                record('MATCH', r, c, k, currentPath, `匹配 '${targetWord[k]}'！加入路径。`);
+
+                // Check if word finished
+                if (k === targetWord.length - 1) {
+                    found = true;
+                    record('FOUND', r, c, k, currentPath, `🎉 单词 "${targetWord}" 已找到！`);
+                    return true;
+                }
+
+                // Explore neighbors
+                const dirs = [[0, 1], [1, 0], [0, -1], [-1, 0]];
+                for (let [dr, dc] of dirs) {
+                    if (found) break;
+                    const nr = r + dr;
+                    const nc = c + dc;
+                    // Only try valid cells to reduce noise in visualization
+                    if (nr >= 0 && nr < m && nc >= 0 && nc < n && !visited[nr][nc]) {
+                        if (dfs(nr, nc, k + 1, currentPath)) return true;
+                    }
+                }
+
+                // Backtrack
+                if (!found) {
+                    visited[r][c] = false;
+                    currentPath.pop();
+                    record('BACKTRACK', r, c, k, currentPath, `路径走不通，从 (${r},${c}) 回溯，撤销访问。`);
+                }
+                return false;
+            };
+
+            // Outer Loop
+            for (let i = 0; i < m; i++) {
+                for (let j = 0; j < n; j++) {
+                    if (found) break;
+                    // Optimization: check first char before starting full DFS visualization overhead
+                    if (currentBoard[i][j] === targetWord[0]) {
+                        record('START_SEARCH', i, j, 0, [], `在 (${i},${j}) 发现首字母 '${targetWord[0]}'，开始搜索。`);
+                        dfs(i, j, 0, []);
+                    }
+                }
+            }
+
+            if (!found) {
+                steps.push({
+                    type: 'NOT_FOUND',
+                    r: -1, c: -1, k: 0,
+                    path: [],
+                    message: "遍历全图未找到目标单词。"
+                });
+            }
+
+            return steps;
+        };
+
+        // --- 初始化/重置 ---
+        const parseInput = () => {
+            try {
+                let b = JSON.parse(boardInput);
+                if (!Array.isArray(b) || !Array.isArray(b[0])) throw new Error("网格必须是二维数组");
+                // Normalize to upper case
+                b = b.map(row => row.map(c => typeof c === 'string' ? c.toUpperCase() : ''));
+                const w = wordInput.trim().toUpperCase();
+                if (!w) throw new Error("目标单词不能为空");
+
+                setBoard(b);
+                setWord(w);
+
+                // Generate timeline
+                const steps = generateTrace(b, w);
+                setTimeline(steps);
+                setStepIndex(0);
+                applyStep(steps[0]);
+
+                setIsPlaying(false);
+                setIsFinished(false);
+                // setMessage(`已加载。网格 ${b.length}x${b[0].length}，目标 "${w}"。`);
+            } catch (e) {
+                setMessage("输入错误: " + e.message);
+            }
+        };
+
+        const applyStep = (step) => {
+            if (!step) return;
+
+            setViewState({
+                activeCell: (step.r >= 0 && step.c >= 0) ? {r: step.r, c: step.c} : null,
+                pathCells: step.path || [],
+                visitedMask: [], // Derived from path for this simple DFS
+                found: step.type === 'FOUND',
+                currentK: step.k,
+                type: step.type
+            });
+            setMessage(step.message);
+
+            if (step.type === 'FOUND' || step.type === 'NOT_FOUND') {
+                setIsFinished(true);
+                setIsPlaying(false);
+            }
+        };
+
+        const randomInput = () => {
+            const chars = "ABCDE";
+            const rows = 4;
+            const cols = 5;
+            const newBoard = Array(rows).fill().map(() =>
+                Array(cols).fill().map(() => chars[Math.floor(Math.random() * chars.length)])
+            );
+            // Randomly place a simple word to ensure success sometimes
+            // Or just random letters and random word
+            const newWord = "ABE";
+
+            setBoardInput(JSON.stringify(newBoard));
+            setWordInput(newWord);
+            setBoard(newBoard);
+            setWord(newWord);
+
+            const steps = generateTrace(newBoard, newWord);
+            setTimeline(steps);
+            setStepIndex(0);
+            applyStep(steps[0]);
+            setIsFinished(false);
+            setIsPlaying(false);
+            setMessage("已生成随机网格。");
+        };
+
+        // --- 自动播放 ---
+        useEffect(() => {
+            let timer;
+            if (isPlaying && !isFinished) {
+                timer = setInterval(() => {
+                    if (stepIndex < timeline.length - 1) {
+                        const next = stepIndex + 1;
+                        setStepIndex(next);
+                        applyStep(timeline[next]);
+                    } else {
+                        setIsPlaying(false);
+                        setIsFinished(true);
+                    }
+                }, 600);
+            }
+            return () => clearInterval(timer);
+        }, [isPlaying, isFinished, stepIndex, timeline]);
+
+        const stepForward = () => {
+            if (stepIndex < timeline.length - 1) {
+                const next = stepIndex + 1;
+                setStepIndex(next);
+                applyStep(timeline[next]);
+            }
+        };
+
+        const resetGame = () => {
+            setStepIndex(0);
+            applyStep(timeline[0]);
+            setIsPlaying(false);
+            setIsFinished(false);
+        };
+
+        // --- 渲染辅助 ---
+        const getCellClass = (r, c) => {
+            let base = "w-10 h-10 sm:w-12 sm:h-12 flex items-center justify-center border-2 rounded-lg font-bold text-lg sm:text-xl cell-transition select-none ";
+            const char = board[r][c];
+
+            // Check if in path
+            const inPathIndex = viewState.pathCells.findIndex(p => p.r === r && p.c === c);
+            const isInPath = inPathIndex !== -1;
+            const isHead = viewState.activeCell && viewState.activeCell.r === r && viewState.activeCell.c === c;
+
+            // Colors
+            if (viewState.found && isInPath) {
+                return base + "bg-green-500 border-green-600 text-white shadow-lg scale-110";
+            }
+
+            if (isHead) {
+                if (viewState.type === 'BACKTRACK') {
+                    return base + "bg-red-100 border-red-400 text-red-600 shake";
+                } else if (viewState.type === 'MATCH' || viewState.type === 'CHECK') {
+                    return base + "bg-yellow-200 border-yellow-500 text-yellow-800 scale-105 shadow-md";
+                }
+            }
+
+            if (isInPath) {
+                return base + "bg-blue-100 border-blue-400 text-blue-800";
+            }
+
+            return base + "bg-white border-slate-200 text-slate-500";
+        };
+
+        // Highlight word char logic
+        const getWordCharStyle = (index) => {
+            let base = "w-8 h-8 flex items-center justify-center border rounded font-mono text-sm transition-all ";
+            if (viewState.found) return base + "bg-green-100 border-green-500 text-green-700 font-bold";
+
+            // If we are currently matching index k
+            if (index === viewState.currentK) return base + "bg-yellow-100 border-yellow-500 text-yellow-700 font-bold scale-110 shadow-sm";
+            // If matched (in path)
+            if (index < viewState.pathCells.length) return base + "bg-blue-100 border-blue-400 text-blue-700";
+
+            return base + "bg-slate-50 border-slate-200 text-slate-400";
+        };
+
+        return (
+            <div className="max-w-4xl mx-auto p-6">
+                {/* 1. 配置区 */}
+                <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4 mb-6">
+                    <div className="flex items-center gap-2 mb-3 text-slate-700 font-bold">
+                        <Icons.Settings />
+                        <span>数据配置</span>
+                    </div>
+                    <div className="flex flex-col sm:flex-row gap-4">
+                        <div className="flex-1">
+                            <label className="text-xs text-slate-400 font-bold ml-1 mb-1 block">字母网格 (JSON)</label>
+                            <input
+                                type="text"
+                                value={boardInput}
+                                onChange={(e) => setBoardInput(e.target.value)}
+                                className="w-full border border-slate-300 rounded-lg px-3 py-2 font-mono text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            />
+                        </div>
+                        <div className="w-full sm:w-32">
+                            <label className="text-xs text-slate-400 font-bold ml-1 mb-1 block">目标单词</label>
+                            <input
+                                type="text"
+                                value={wordInput}
+                                onChange={(e) => setWordInput(e.target.value)}
+                                className="w-full border border-slate-300 rounded-lg px-3 py-2 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 text-center"
+                            />
+                        </div>
+                        <div className="flex items-end gap-2">
+                            <button onClick={parseInput} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-medium text-sm h-[40px]">
+                                加载
+                            </button>
+                            <button onClick={randomInput} className="px-3 py-2 bg-slate-100 text-slate-600 rounded-lg hover:bg-slate-200 transition h-[40px]" title="随机">
+                                <Icons.Shuffle />
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                {/* 2. 主区域 */}
+                <div className="bg-white rounded-xl shadow-lg border border-slate-200 overflow-hidden">
+                    {/* Header */}
+                    <div className="border-b border-slate-100 bg-slate-50 p-4 flex justify-between items-center">
+                        <div>
+                            <h1 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+                                <Icons.Search /> 单词搜索 (Backtracking)
+                            </h1>
+                            <p className="text-xs text-slate-500 mt-1">在网格中寻找路径，字符需相邻且不重复。</p>
+                        </div>
+                        <div className="text-xs font-mono bg-white px-2 py-1 rounded border border-slate-200 text-slate-500">
+                            Step: {stepIndex} / {timeline.length}
+                        </div>
+                    </div>
+
+                    {/* Visualization Canvas */}
+                    <div className="p-6 bg-slate-50 min-h-[400px] flex flex-col md:flex-row gap-8 items-start justify-center">
+
+                        {/* Left: The Grid */}
+                        <div className="flex flex-col items-center">
+                            <div className="grid gap-2 p-2 bg-white rounded-xl shadow-sm border border-slate-200"
+                                 style={{gridTemplateColumns: `repeat(${board[0].length}, minmax(0, 1fr))`}}>
+                                {board.map((row, r) => (
+                                    row.map((col, c) => (
+                                        <div key={`${r}-${c}`} className={getCellClass(r, c)}>
+                                            {col}
+                                        </div>
+                                    ))
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Right: Status & Word Progress */}
+                        <div className="flex-1 w-full md:w-auto flex flex-col gap-6">
+
+                            {/* Word Progress */}
+                            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col items-center">
+                                <div className="text-xs font-bold text-slate-400 mb-2 uppercase tracking-widest">Target Word</div>
+                                <div className="flex gap-1">
+                                    {word.split('').map((char, i) => (
+                                        <div key={i} className={getWordCharStyle(i)}>
+                                            {char}
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {/* Legend */}
+                            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm text-xs space-y-2">
+                                <div className="font-bold text-slate-400 uppercase tracking-widest mb-1">Legend</div>
+                                <div className="flex items-center gap-2">
+                                    <span className="w-3 h-3 bg-blue-100 border border-blue-400 rounded"></span>
+                                    <span className="text-slate-600">当前路径 (Visited)</span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <span className="w-3 h-3 bg-yellow-200 border border-yellow-500 rounded"></span>
+                                    <span className="text-slate-600">尝试匹配 / 探索中</span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <span className="w-3 h-3 bg-red-100 border border-red-400 rounded"></span>
+                                    <span className="text-slate-600">回溯 (走不通)</span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <span className="w-3 h-3 bg-green-500 rounded"></span>
+                                    <span className="text-slate-600">寻找成功</span>
+                                </div>
+                            </div>
+
+                        </div>
+                    </div>
+
+                    {/* Controls */}
+                    <div className="border-t border-slate-100 p-4 bg-white">
+                        <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+                            <div className="flex-1 bg-blue-50 text-blue-800 px-4 py-3 rounded-lg text-sm border-l-4 border-blue-500 w-full sm:w-auto shadow-sm transition-all">
+                                {message}
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <button onClick={() => setIsPlaying(!isPlaying)} disabled={isFinished} className={`flex items-center gap-2 px-4 py-2 rounded-lg text-white font-medium transition ${isPlaying ? 'bg-red-500 hover:bg-red-600' : 'bg-blue-600 hover:bg-blue-700'} disabled:opacity-50`}>
+                                    {isPlaying ? <Icons.Pause /> : <Icons.Play />}
+                                    <span className="hidden sm:inline">{isPlaying ? "暂停" : "自动"}</span>
+                                </button>
+                                <button onClick={stepForward} disabled={isPlaying || isFinished} className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 font-medium transition disabled:opacity-50">
+                                    <Icons.Step />
+                                    <span className="hidden sm:inline">单步</span>
+                                </button>
+                                <button onClick={resetGame} className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition">
+                                    <Icons.Reset />
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        );
+    };
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+</script>
+</body>
+</html>

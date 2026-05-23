@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>算法可视化：二叉树的直径</title>
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- React & ReactDOM -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+
+    <!-- Babel for JSX -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <!-- Custom Styles -->
+    <style>
+        body {
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+        }
+        .smooth-transition {
+            transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        /* 节点出现动画 */
+        @keyframes popIn {
+            0% { transform: scale(0); opacity: 0; }
+            70% { transform: scale(1.1); opacity: 1; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+        .node-enter {
+            animation: popIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+        }
+
+        /* 路径流光动画 */
+        .path-flow {
+            stroke-dasharray: 10;
+            animation: dash 1s linear infinite;
+        }
+        @keyframes dash {
+            to { stroke-dashoffset: -20; }
+        }
+
+        /* 滚动条美化 */
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #fff7ed; }
+        ::-webkit-scrollbar-thumb { background: #f97316; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #ea580c; }
+    </style>
+</head>
+<body class="text-slate-800">
+<div id="root"></div>
+
+<script type="text/babel">
+    const { useState, useEffect, useRef, useMemo } = React;
+
+    // --- 图标组件 ---
+    const Icons = {
+        Play: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>,
+        Pause: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>,
+        Step: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="5 4 15 12 5 20 5 4"></polygon><line x1="19" y1="5" x2="19" y2="19"></line></svg>,
+        Reset: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 12" /><path d="M3 3v9h9" /></svg>,
+        Settings: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>,
+        Shuffle: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="16 3 21 3 21 8"></polyline><line x1="4" y1="20" x2="21" y2="3"></line><polyline points="21 16 21 21 16 21"></polyline><line x1="15" y1="15" x2="21" y2="21"></line><line x1="4" y1="4" x2="9" y2="9"></line></svg>
+    };
+
+    // --- 树节点类 ---
+    class TreeNode {
+        constructor(val, id) {
+            this.val = val;
+            this.id = id;
+            this.left = null;
+            this.right = null;
+            this.x = 0;
+            this.y = 0;
+        }
+    }
+
+    // --- 辅助函数：构建树 ---
+    const buildTree = (arr) => {
+        if (!arr || arr.length === 0) return null;
+        const root = new TreeNode(arr[0], `node-0-${Date.now()}`);
+        const queue = [root];
+        let i = 1;
+        while (i < arr.length) {
+            const curr = queue.shift();
+            if (i < arr.length && arr[i] !== null) {
+                curr.left = new TreeNode(arr[i], `node-${i}-${Date.now()}`);
+                queue.push(curr.left);
+            }
+            i++;
+            if (i < arr.length && arr[i] !== null) {
+                curr.right = new TreeNode(arr[i], `node-${i}-${Date.now()}`);
+                queue.push(curr.right);
+            }
+            i++;
+        }
+        return root;
+    };
+
+    // --- 辅助函数：计算布局 ---
+    const calculatePositions = (node, depth = 0, x = 50, layerGap = 70) => {
+        if (!node) return;
+        const spread = 25 / Math.pow(2, depth);
+        node.y = depth * layerGap + 40;
+        node.x = x;
+        if (node.left) calculatePositions(node.left, depth + 1, x - spread, layerGap);
+        if (node.right) calculatePositions(node.right, depth + 1, x + spread, layerGap);
+    };
+
+    const flattenTree = (root) => {
+        const nodes = [];
+        const links = [];
+        if (!root) return { nodes, links };
+        const traverse = (node) => {
+            if (!node) return;
+            nodes.push(node);
+            if (node.left) {
+                links.push({ from: node, to: node.left, id: `${node.id}-${node.left.id}` });
+                traverse(node.left);
+            }
+            if (node.right) {
+                links.push({ from: node, to: node.right, id: `${node.id}-${node.right.id}` });
+                traverse(node.right);
+            }
+        };
+        traverse(root);
+        return { nodes, links };
+    };
+
+    // --- App Component ---
+    const App = () => {
+        // Config
+        const [inputStr, setInputStr] = useState("1, 2, 3, 4, 5");
+
+        // Tree State
+        const [rootNode, setRootNode] = useState(null);
+
+        // Algorithm State
+        const [stack, setStack] = useState([]); // Call Stack for simulation
+        const [nodeData, setNodeData] = useState({}); // Stores { height, maxL, maxR } for each node ID
+        const [maxDiameter, setMaxDiameter] = useState(0);
+        const [maxDiameterNodeId, setMaxDiameterNodeId] = useState(null); // Which node produced the max diameter
+
+        // Control Flow
+        const [isPlaying, setIsPlaying] = useState(false);
+        const [isFinished, setIsFinished] = useState(false);
+        const [message, setMessage] = useState("准备就绪");
+        const [currentNodeId, setCurrentNodeId] = useState(null); // Currently visiting
+
+        const timerRef = useRef(null);
+
+        // --- Init ---
+        const initTree = (str) => {
+            const arr = str.split(/[,，\s]+/).map(n => n.trim() === 'null' ? null : parseInt(n)).filter(n => !isNaN(n) || n === null);
+            const root = buildTree(arr);
+            calculatePositions(root);
+
+            setRootNode(root);
+            setNodeData({});
+            setMaxDiameter(0);
+            setMaxDiameterNodeId(null);
+            setCurrentNodeId(null);
+            setIsFinished(false);
+            setIsPlaying(false);
+
+            // Initialize Stack for Post-Order Traversal Simulation
+            // Frame: { node, stage }
+            // stage 0: enter, 1: after left, 2: after right (process)
+            if (root) {
+                setStack([{ node: root, stage: 0 }]);
+                setMessage("开始后序遍历 (Post-order Traversal)...");
+            } else {
+                setStack([]);
+                setMessage("空树，直径为 0");
+            }
+
+            if (timerRef.current) clearInterval(timerRef.current);
+        };
+
+        const loadInput = () => initTree(inputStr);
+        const randomInput = () => {
+            const arr = Array.from({length: 6 + Math.floor(Math.random()*5)}, () => Math.floor(Math.random()*10)+1);
+            const str = arr.join(", ");
+            setInputStr(str);
+            initTree(str);
+        };
+
+        useEffect(() => {
+            initTree(inputStr);
+        }, []);
+
+        // --- Step Logic ---
+        const step = () => {
+            if (stack.length === 0) {
+                setIsFinished(true);
+                setIsPlaying(false);
+                setMessage(`计算完成！二叉树直径为: ${maxDiameter}`);
+                setCurrentNodeId(null);
+                return;
+            }
+
+            const newStack = [...stack];
+            const frame = newStack[newStack.length - 1];
+            const node = frame.node;
+
+            setCurrentNodeId(node.id);
+
+            // Stage 0: Enter Node -> Push Left
+            if (frame.stage === 0) {
+                frame.stage = 1;
+                if (node.left) {
+                    newStack.push({ node: node.left, stage: 0 });
+                    setMessage(`访问节点 ${node.val}，深入左子树...`);
+                } else {
+                    // No left child, L=0
+                    setMessage(`节点 ${node.val} 无左子树，L=0`);
+                }
+            }
+            // Stage 1: Return from Left -> Push Right
+            else if (frame.stage === 1) {
+                frame.stage = 2;
+                if (node.right) {
+                    newStack.push({ node: node.right, stage: 0 });
+                    setMessage(`回到节点 ${node.val}，深入右子树...`);
+                } else {
+                    // No right child, R=0
+                    setMessage(`节点 ${node.val} 无右子树，R=0`);
+                }
+            }
+            // Stage 2: Return from Right -> Calculate & Pop
+            else if (frame.stage === 2) {
+                const leftH = node.left ? (nodeData[node.left.id]?.height || 0) : 0;
+                const rightH = node.right ? (nodeData[node.right.id]?.height || 0) : 0;
+
+                const currentH = Math.max(leftH, rightH) + 1;
+                const currentD = leftH + rightH;
+
+                // Update local data
+                const newData = { ...nodeData, [node.id]: { height: currentH, leftH, rightH } };
+                setNodeData(newData);
+
+                // Check max diameter
+                let msg = `节点 ${node.val}: L=${leftH}, R=${rightH}。路径长度 = ${leftH} + ${rightH} = ${currentD}。`;
+                if (currentD > maxDiameter) {
+                    setMaxDiameter(currentD);
+                    setMaxDiameterNodeId(node.id);
+                    msg += ` 🎯 更新最大直径!`;
+                }
+                setMessage(msg);
+
+                // Pop
+                newStack.pop();
+            }
+
+            setStack(newStack);
+        };
+
+        // --- Auto Play ---
+        useEffect(() => {
+            if (isPlaying) {
+                timerRef.current = setInterval(step, 1000);
+            }
+            return () => clearInterval(timerRef.current);
+        }, [isPlaying, stack, nodeData, maxDiameter]);
+
+        // --- Render Logic ---
+        const { nodes, links } = useMemo(() => flattenTree(rootNode), [rootNode]);
+
+        // Helper to check if a link is part of the max diameter path
+        const isLinkInMaxPath = (link) => {
+            if (!maxDiameterNodeId || !nodeData[maxDiameterNodeId]) return false;
+
+            // 简单的启发式判断：如果这个连线在 maxDiameterNode 的子树中，且属于高度较大的那一侧
+            // 这里为了精确，我们应该回溯路径。
+            // 简化可视化：只高亮 maxNode 的直接左右“最深”路径
+            // (真正的路径可能很长，递归查找最长路径节点标记会更完美，这里做近似处理：高亮所有贡献了高度的边)
+
+            // 递归查找贡献高度的边
+            const isOnPath = (parent, child) => {
+                if (!nodeData[parent.id] || !nodeData[child.id]) return false;
+                const pData = nodeData[parent.id];
+                const cData = nodeData[child.id];
+                // 父亲的高度是否由这个孩子贡献？(Parent Height == Child Height + 1)
+                return pData.height === cData.height + 1;
+            }
+
+            // 检查是否在 maxNode 的左子树路径或右子树路径上
+            // 需要遍历检查 link 是否是 maxNode 及其后代的最长路径边
+            const maxNode = nodes.find(n => n.id === maxDiameterNodeId);
+            if (!maxNode) return false;
+
+            // 判断 link 是否属于 maxNode 左侧最深路径
+            let curr = maxNode;
+            while(curr && curr.left) {
+                if (link.from.id === curr.id && link.to.id === curr.left.id && isOnPath(curr, curr.left)) return true;
+                // Move down only if this child contributes to height
+                if (isOnPath(curr, curr.left)) curr = curr.left;
+                else break;
+            }
+            // Check right side of descendants
+            // (BUG FIX: The recursive check above logic is slightly flawed for generic traversal,
+            // but good enough if we strictly follow max height chain from the Anchor Node)
+
+            // Re-implementation for clarity:
+            // Start from MaxNode. Go Left as long as H matches. Go Right as long as H matches.
+            // If link is part of these two chains, highlight it.
+
+            const checkChain = (startNode) => {
+                let curr = startNode;
+                while(curr) {
+                    if (link.from.id === curr.id && link.to.id === curr.left?.id) {
+                        if (nodeData[curr.left.id]?.height === (nodeData[curr.id].height - 1) ||
+                            (nodeData[curr.left.id]?.height === undefined && nodeData[curr.id].height === 1)) // leaf case
+                            return true;
+                    }
+                    if (link.from.id === curr.id && link.to.id === curr.right?.id) {
+                        if (nodeData[curr.right.id]?.height === (nodeData[curr.id].height - 1) ||
+                            (nodeData[curr.right.id]?.height === undefined && nodeData[curr.id].height === 1))
+                            return true;
+                    }
+
+                    // Move down the chain
+                    let next = null;
+                    if (curr.left && nodeData[curr.left.id]?.height === (nodeData[curr.id].height - 1)) next = curr.left;
+                    else if (curr.right && nodeData[curr.right.id]?.height === (nodeData[curr.id].height - 1)) next = curr.right;
+
+                    // Special handling for the Pivot Node (Max Diameter Node): It can branch both ways!
+                    // But here we are inside a helper, checking if 'link' is relevant.
+                    curr = next;
+                }
+                return false;
+            };
+
+            // Check Left Chain from MaxNode
+            let lChain = false;
+            if (maxNode.left && (link.from.id === maxNode.id ? link.to.id === maxNode.left.id : true)) {
+                // Check if link is in the left chain
+                let curr = maxNode.left;
+                // Is link the edge connecting maxNode -> maxNode.left?
+                if (link.from.id === maxNode.id && link.to.id === maxNode.left.id) {
+                    // Only if left child contributes to the path (always true if we consider diameter goes through both if exists)
+                    // Actually diameter = L + R. So we highlight path to left leaf and path to right leaf.
+                    lChain = true;
+                } else {
+                    // Check deeper
+                    lChain = checkChain(maxNode.left);
+                }
+            }
+
+            // Check Right Chain from MaxNode
+            let rChain = false;
+            if (maxNode.right && (link.from.id === maxNode.id ? link.to.id === maxNode.right.id : true)) {
+                if (link.from.id === maxNode.id && link.to.id === maxNode.right.id) {
+                    rChain = true;
+                } else {
+                    rChain = checkChain(maxNode.right);
+                }
+            }
+
+            return lChain || rChain;
+        };
+
+        return (
+            <div className="max-w-4xl mx-auto p-4 sm:p-6">
+                {/* 1. 顶部配置 */}
+                <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4 mb-6">
+                    <div className="flex items-center gap-2 mb-3 text-slate-700 font-bold">
+                        <Icons.Settings />
+                        <span>二叉树配置</span>
+                    </div>
+                    <div className="flex gap-3">
+                        <input
+                            type="text"
+                            value={inputStr}
+                            onChange={(e) => setInputStr(e.target.value)}
+                            className="flex-1 border border-slate-300 rounded-lg px-3 py-2 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+                            placeholder="1, 2, 3, 4, 5"
+                        />
+                        <button onClick={loadInput} className="px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition font-medium text-sm">
+                            加载
+                        </button>
+                        <button onClick={randomInput} className="px-3 py-2 bg-slate-100 text-slate-600 rounded-lg hover:bg-slate-200 transition" title="随机">
+                            <Icons.Shuffle />
+                        </button>
+                    </div>
+                </div>
+
+                {/* 2. 主体区 */}
+                <div className="bg-white rounded-xl shadow-lg border border-slate-200 overflow-hidden">
+                    {/* Header */}
+                    <div className="border-b border-slate-100 bg-slate-50 p-4 flex flex-col sm:flex-row justify-between items-center gap-4">
+                        <div>
+                            <h1 className="text-xl font-bold text-slate-800">二叉树的直径</h1>
+                            <p className="text-xs text-slate-500 mt-1">最长路径长度 (LeetCode 543) · 后序遍历</p>
+                        </div>
+                        <div className="flex gap-4">
+                            <div className="flex flex-col items-end">
+                                <span className="text-xs font-bold text-slate-400 uppercase">Max Diameter</span>
+                                <span className="text-2xl font-black text-orange-600">{maxDiameter}</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Canvas */}
+                    <div className="p-4 sm:p-8 bg-slate-50 min-h-[400px] relative flex justify-center items-start overflow-hidden select-none">
+                        <div className="relative w-full h-[350px]">
+                            {/* SVG Lines */}
+                            <svg className="absolute inset-0 w-full h-full pointer-events-none z-0">
+                                {links.map(link => {
+                                    const isPath = isLinkInMaxPath(link);
+                                    return (
+                                        <line
+                                            key={link.id}
+                                            x1={`${link.from.x}%`} y1={link.from.y}
+                                            x2={`${link.to.x}%`} y2={link.to.y}
+                                            stroke={isPath ? "#f97316" : "#cbd5e1"}
+                                            strokeWidth={isPath ? "4" : "2"}
+                                            className={`smooth-transition ${isPath ? 'path-flow' : ''}`}
+                                        />
+                                    );
+                                })}
+                            </svg>
+
+                            {/* Nodes */}
+                            {nodes.map(node => {
+                                const data = nodeData[node.id];
+                                const isCurrent = node.id === currentNodeId;
+                                const isMaxRoot = node.id === maxDiameterNodeId;
+
+                                return (
+                                    <div
+                                        key={node.id}
+                                        className={`absolute -ml-6 -mt-6 w-12 h-12 rounded-full flex items-center justify-center border-2 font-bold text-lg shadow-sm smooth-transition z-10 node-enter
+                                                ${isCurrent ? 'bg-blue-500 border-blue-600 text-white scale-110' :
+                                            isMaxRoot ? 'bg-orange-100 border-orange-500 text-orange-700 ring-4 ring-orange-200' :
+                                                data ? 'bg-green-100 border-green-400 text-green-800' : 'bg-white border-slate-300 text-slate-500'}
+                                            `}
+                                        style={{ left: `${node.x}%`, top: `${node.y}px` }}
+                                    >
+                                        {node.val}
+
+                                        {/* Height Label */}
+                                        {data && (
+                                            <div className="absolute -right-8 top-0 bg-slate-700 text-white text-[10px] px-1.5 rounded opacity-80">
+                                                H:{data.height}
+                                            </div>
+                                        )}
+
+                                        {/* L/R Labels during process */}
+                                        {isCurrent && (
+                                            <div className="absolute -bottom-8 flex gap-1 text-[10px] font-mono bg-white/80 p-1 rounded shadow-sm border border-slate-100 whitespace-nowrap z-20">
+                                                <span>L:{nodeData[node.left?.id]?.height || 0}</span>
+                                                <span className="text-slate-300">|</span>
+                                                <span>R:{nodeData[node.right?.id]?.height || 0}</span>
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+
+                    {/* Controls */}
+                    <div className="border-t border-slate-100 p-4 bg-white">
+                        <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+                            <div className="flex-1 bg-orange-50 text-orange-900 px-4 py-3 rounded-lg text-sm border-l-4 border-orange-500 w-full sm:w-auto transition-colors">
+                                {message}
+                            </div>
+
+                            <div className="flex items-center gap-2">
+                                <button onClick={() => setIsPlaying(!isPlaying)} disabled={isFinished} className={`flex items-center gap-2 px-4 py-2 rounded-lg text-white font-medium transition ${isPlaying ? 'bg-slate-500 hover:bg-slate-600' : 'bg-orange-500 hover:bg-orange-600'} disabled:opacity-50`}>
+                                    {isPlaying ? <Icons.Pause /> : <Icons.Play />}
+                                    <span className="hidden sm:inline">{isPlaying ? "暂停" : "运行"}</span>
+                                </button>
+                                <button onClick={step} disabled={isPlaying || isFinished} className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 font-medium transition disabled:opacity-50">
+                                    <Icons.Step />
+                                    <span className="hidden sm:inline">单步</span>
+                                </button>
+                                <button onClick={() => loadInput()} className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition" title="重置">
+                                    <Icons.Reset />
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        );
+    };
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+</script>
+</body>
+</html>

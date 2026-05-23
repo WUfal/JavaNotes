@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>和为 K 的子数组 - 算法可视化</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <style>
+        body { background-color: #f8fafc; font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; }
+        .cell-transition { transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+        .fade-enter { animation: fadeIn 0.4s ease-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+        /* Map 条目动画 */
+        .map-item-enter { animation: slideIn 0.3s forwards; }
+        @keyframes slideIn { from { opacity: 0; transform: translateX(-10px); } to { opacity: 1; transform: translateX(0); } }
+
+        /* 命中动画 */
+        .hit-pulse { animation: pulseGreen 0.6s ease-in-out; }
+        @keyframes pulseGreen {
+            0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.4); }
+            50% { transform: scale(1.05); box-shadow: 0 0 0 6px rgba(34, 197, 94, 0); background-color: #dcfce7; }
+            100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); }
+        }
+    </style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel">
+    const { useState, useEffect, useRef } = React;
+
+    // --- 图标组件 ---
+    const Icons = {
+        Play: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>,
+        Pause: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>,
+        Step: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>,
+        Reset: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 12" /><path d="M3 3v9h9" /></svg>,
+        Settings: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>,
+        Shuffle: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="16 3 21 3 21 8"></polyline><line x1="4" y1="20" x2="21" y2="3"></line><polyline points="21 16 21 21 16 21"></polyline><line x1="15" y1="15" x2="21" y2="21"></line><line x1="4" y1="4" x2="9" y2="9"></line></svg>
+    };
+
+    // --- 辅助函数 ---
+    const parseInput = (str) => {
+        return str.split(/[,，\s]+/)
+            .map(v => parseInt(v.trim()))
+            .filter(v => !isNaN(v));
+    };
+
+    const App = () => {
+        // --- 状态定义 ---
+        const [inputStr, setInputStr] = useState("1, 1, 1");
+        const [kInput, setKInput] = useState("2");
+        const [mode, setMode] = useState("prefix"); // 'brute' | 'prefix'
+
+        // 核心数据
+        const [nums, setNums] = useState([1, 1, 1]);
+        const [k, setK] = useState(2);
+
+        // 运行状态
+        const [isPlaying, setIsPlaying] = useState(false);
+        const [isFinished, setIsFinished] = useState(false);
+        const [message, setMessage] = useState("准备就绪");
+        const [msgColor, setMsgColor] = useState("text-slate-600");
+        const [count, setCount] = useState(0);
+
+        // 暴力法状态
+        const [bruteI, setBruteI] = useState(0);
+        const [bruteJ, setBruteJ] = useState(0);
+        const [currentSubSum, setCurrentSubSum] = useState(0);
+
+        // 前缀和状态
+        const [currIdx, setCurrIdx] = useState(0);
+        const [currentSum, setCurrentSum] = useState(0);
+        // 为了方便展示，我们将 Map 转为数组对象 [{sum: 0, count: 1}, ...]
+        const [prefixMap, setPrefixMap] = useState([{sum: 0, count: 1}]);
+        const [phase, setPhase] = useState("calc"); // 'calc' -> 'check' -> 'update'
+        const [foundTarget, setFoundTarget] = useState(null); // 在 Map 中找到的目标值 (currentSum - k)
+
+        const timerRef = useRef(null);
+
+        // --- 初始化 ---
+        const reset = (arr = nums, kVal = k) => {
+            setIsPlaying(false);
+            setIsFinished(false);
+            setCount(0);
+            setMessage("状态已重置");
+            setMsgColor("text-slate-600");
+
+            // Brute Reset
+            setBruteI(0);
+            setBruteJ(0);
+            setCurrentSubSum(0);
+
+            // Prefix Reset
+            setCurrIdx(0);
+            setCurrentSum(0);
+            setPrefixMap([{sum: 0, count: 1}]); // 初始前缀和 0 出现 1 次
+            setPhase("calc");
+            setFoundTarget(null);
+
+            if (timerRef.current) clearInterval(timerRef.current);
+        };
+
+        const loadInput = () => {
+            const arr = parseInput(inputStr);
+            const kVal = parseInt(kInput);
+            if (arr.length === 0 || isNaN(kVal)) return;
+            setNums(arr);
+            setK(kVal);
+            reset(arr, kVal);
+            setMessage(`已加载数据，K = ${kVal}`);
+        };
+
+        const randomInput = () => {
+            const len = 6 + Math.floor(Math.random() * 4);
+            const arr = Array.from({length: len}, () => Math.floor(Math.random() * 7) - 3); // -3 to 3
+            const kVal = Math.floor(Math.random() * 5);
+
+            setInputStr(arr.join(", "));
+            setKInput(kVal.toString());
+            setNums(arr);
+            setK(kVal);
+            reset(arr, kVal);
+            setMessage(`随机数组生成，K = ${kVal}`);
+        };
+
+        useEffect(() => {
+            reset();
+        }, [mode]);
+
+        // --- 核心算法逻辑 ---
+        const stepForward = () => {
+            if (isFinished) return;
+
+            if (mode === 'brute') stepBrute();
+            else stepPrefix();
+        };
+
+        // 1. 暴力法
+        const stepBrute = () => {
+            if (bruteI >= nums.length) {
+                setIsFinished(true);
+                setIsPlaying(false);
+                setMessage(`遍历结束。总共找到 ${count} 个子数组。`);
+                setMsgColor("text-green-600");
+                return;
+            }
+
+            let sum;
+            // 如果是新一轮子数组 (j==i)，sum初始化为 nums[i]
+            if (bruteJ === bruteI) {
+                sum = nums[bruteI];
+            } else {
+                sum = currentSubSum + nums[bruteJ];
+            }
+            setCurrentSubSum(sum);
+
+            let msg = `检查子数组 [${bruteI}, ${bruteJ}]，和为 ${sum}。`;
+            let color = "text-slate-600";
+
+            if (sum === k) {
+                setCount(c => c + 1);
+                msg += ` 等于 K (${k})！计数 +1。`;
+                color = "text-green-600";
+            }
+
+            setMessage(msg);
+            setMsgColor(color);
+
+            // 移动指针
+            let nextJ = bruteJ + 1;
+            if (nextJ >= nums.length) {
+                setBruteI(bruteI + 1);
+                setBruteJ(bruteI + 1);
+                setCurrentSubSum(0);
+            } else {
+                setBruteJ(nextJ);
+            }
+        };
+
+        // 2. 前缀和 + 哈希表
+        const stepPrefix = () => {
+            if (currIdx >= nums.length) {
+                setIsFinished(true);
+                setIsPlaying(false);
+                setMessage(`遍历结束。总共找到 ${count} 个子数组。`);
+                setMsgColor("text-green-600");
+                return;
+            }
+
+            // Phase 1: Calc Sum
+            if (phase === "calc") {
+                const nextSum = currentSum + nums[currIdx];
+                setCurrentSum(nextSum);
+                setMessage(`加上 nums[${currIdx}] (${nums[currIdx]})，当前前缀和 = ${nextSum}。`);
+                setMsgColor("text-blue-600");
+                setPhase("check");
+                return;
+            }
+
+            // Phase 2: Check Map
+            if (phase === "check") {
+                const target = currentSum - k;
+                setFoundTarget(target);
+
+                const entry = prefixMap.find(item => item.sum === target);
+
+                if (entry) {
+                    setCount(c => c + entry.count);
+                    setMessage(`寻找前缀和 ${target} (Current ${currentSum} - K ${k})：找到 ${entry.count} 次！计数 +${entry.count}。`);
+                    setMsgColor("text-green-600");
+                } else {
+                    setMessage(`寻找前缀和 ${target} (Current ${currentSum} - K ${k})：未找到。`);
+                    setMsgColor("text-slate-500");
+                }
+                setPhase("update");
+                return;
+            }
+
+            // Phase 3: Update Map & Move
+            if (phase === "update") {
+                const newMap = [...prefixMap];
+                const existing = newMap.find(item => item.sum === currentSum);
+                if (existing) {
+                    existing.count += 1;
+                } else {
+                    newMap.push({ sum: currentSum, count: 1 });
+                }
+                setPrefixMap(newMap);
+
+                setMessage(`将当前前缀和 ${currentSum} 记录到哈希表。`);
+                setMsgColor("text-slate-600");
+
+                setCurrIdx(prev => prev + 1);
+                setFoundTarget(null); // Clear highlight
+                setPhase("calc");
+                return;
+            }
+        };
+
+        // --- 自动播放 ---
+        useEffect(() => {
+            let timer;
+            if (isPlaying && !isFinished) {
+                timer = setInterval(() => {
+                    stepForward();
+                }, mode === 'prefix' ? 1200 : 800);
+            }
+            return () => clearInterval(timer);
+        }, [isPlaying, isFinished, mode, bruteI, bruteJ, currIdx, phase, currentSum, prefixMap]);
+
+        // --- 渲染逻辑 ---
+        const getCellClass = (index) => {
+            let base = "w-10 h-10 sm:w-12 sm:h-12 flex items-center justify-center border rounded-lg font-mono text-lg font-bold relative cell-transition shadow-sm ";
+
+            if (mode === 'brute') {
+                if (index >= bruteI && index <= bruteJ) {
+                    base += "bg-pink-100 border-pink-400 text-pink-800 ";
+                } else {
+                    base += "bg-white border-slate-200 text-slate-400 ";
+                }
+                // Pointers
+                if (index === bruteI) base += "ring-2 ring-blue-300 ring-offset-1 ";
+                if (index === bruteJ) base += "ring-2 ring-pink-300 ring-offset-1 ";
+            } else {
+                // Prefix Mode
+                if (index === currIdx && !isFinished) {
+                    base += "bg-blue-100 border-blue-500 text-blue-800 scale-110 z-10 ";
+                } else if (index < currIdx) {
+                    base += "bg-slate-50 border-slate-200 text-slate-400 ";
+                } else {
+                    base += "bg-white border-slate-200 text-slate-300 ";
+                }
+            }
+            return base;
+        };
+
+        return (
+            <div className="max-w-4xl mx-auto p-4 sm:p-6">
+                {/* 1. 顶部配置 */}
+                <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4 mb-6">
+                    <div className="flex items-center gap-2 mb-3 text-slate-700 font-bold">
+                        <Icons.Settings />
+                        <span>数据配置</span>
+                    </div>
+                    <div className="grid grid-cols-12 gap-3">
+                        <div className="col-span-8 sm:col-span-8">
+                            <input
+                                type="text"
+                                value={inputStr}
+                                onChange={(e) => setInputStr(e.target.value)}
+                                className="w-full border border-slate-300 rounded-lg px-3 py-2 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-pink-500"
+                                placeholder="输入数组..."
+                            />
+                        </div>
+                        <div className="col-span-4 sm:col-span-2 relative flex items-center">
+                            <span className="absolute left-2 text-xs text-slate-400 font-bold">K=</span>
+                            <input
+                                type="number"
+                                value={kInput}
+                                onChange={(e) => setKInput(e.target.value)}
+                                className="w-full border border-slate-300 rounded-lg pl-6 pr-2 py-2 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-pink-500"
+                            />
+                        </div>
+                        <div className="col-span-12 sm:col-span-2 flex gap-2">
+                            <button onClick={loadInput} className="flex-1 px-4 py-2 bg-pink-600 text-white rounded-lg hover:bg-pink-700 transition font-medium text-sm">
+                                加载
+                            </button>
+                            <button onClick={randomInput} className="px-3 py-2 bg-slate-100 text-slate-600 rounded-lg hover:bg-slate-200 transition" title="随机">
+                                <Icons.Shuffle />
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                {/* 2. 主体区 */}
+                <div className="bg-white rounded-xl shadow-lg border border-slate-200 overflow-hidden">
+                    {/* Header */}
+                    <div className="border-b border-slate-100 bg-slate-50 p-4 flex flex-col sm:flex-row justify-between items-center gap-4">
+                        <div>
+                            <h1 className="text-xl font-bold text-slate-800">和为 K 的子数组</h1>
+                            <p className="text-xs text-slate-500 mt-1">前缀和 + 哈希表优化 · LeetCode 560</p>
+                        </div>
+                        <div className="flex bg-slate-200 p-1 rounded-lg">
+                            <button
+                                onClick={() => { setMode('brute'); reset(); }}
+                                className={`px-3 py-1.5 text-sm rounded-md transition-all font-medium ${mode === 'brute' ? 'bg-white text-pink-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                            >
+                                暴力法 O(N²)
+                            </button>
+                            <button
+                                onClick={() => { setMode('prefix'); reset(); }}
+                                className={`px-3 py-1.5 text-sm rounded-md transition-all font-medium ${mode === 'prefix' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                            >
+                                前缀和 O(N)
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Canvas */}
+                    <div className="p-6 bg-slate-50 min-h-[300px] flex flex-col items-center gap-8">
+
+                        {/* 状态统计 */}
+                        <div className="flex gap-8 items-center w-full justify-center">
+                            <div className="flex flex-col items-center">
+                                <span className="text-xs font-bold text-slate-400 uppercase">Target K</span>
+                                <span className="text-xl font-bold text-slate-700">{k}</span>
+                            </div>
+                            <div className="h-8 w-px bg-slate-300"></div>
+                            <div className="flex flex-col items-center">
+                                <span className="text-xs font-bold text-slate-400 uppercase">Current Sum</span>
+                                <span className="text-xl font-bold text-blue-600">
+                                    {mode === 'brute' ? currentSubSum : currentSum}
+                                </span>
+                            </div>
+                            <div className="h-8 w-px bg-slate-300"></div>
+                            <div className="flex flex-col items-center">
+                                <span className="text-xs font-bold text-slate-400 uppercase">Count</span>
+                                <span className="text-2xl font-black text-green-600">{count}</span>
+                            </div>
+                        </div>
+
+                        {/* Array */}
+                        <div className="flex flex-wrap justify-center gap-2">
+                            {nums.map((num, idx) => (
+                                <div key={idx} className="flex flex-col items-center">
+                                    <div className={getCellClass(idx)}>
+                                        {num}
+                                    </div>
+                                    <span className="text-[10px] text-slate-300 mt-1">{idx}</span>
+                                </div>
+                            ))}
+                        </div>
+
+                        {/* Map Visualization (Only for Prefix Mode) */}
+                        {mode === 'prefix' && (
+                            <div className="w-full max-w-lg bg-white rounded-lg border border-slate-200 p-3 shadow-inner">
+                                <div className="flex justify-between items-center mb-2 pb-2 border-b border-slate-100">
+                                    <span className="text-xs font-bold text-slate-500 uppercase flex items-center gap-2">
+                                        <span className="w-2 h-2 rounded-full bg-slate-400"></span>
+                                        Hash Map (PrefixSum -> Count)
+                                    </span>
+                                    {foundTarget !== null && phase === 'check' && (
+                                        <span className="text-xs font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded">
+                                            Looking for: {foundTarget}
+                                        </span>
+                                    )}
+                                </div>
+                                <div className="flex flex-wrap gap-3 max-h-[120px] overflow-y-auto pr-1">
+                                    {prefixMap.map((item, idx) => {
+                                        const isHit = foundTarget === item.sum && phase === 'check';
+                                        return (
+                                            <div key={idx} className={`
+                                                flex items-center text-xs border rounded px-2 py-1 map-item-enter transition-colors duration-300
+                                                ${isHit ? 'bg-green-100 border-green-400 text-green-800 hit-pulse' : 'bg-slate-50 border-slate-200 text-slate-600'}
+                                            `}>
+                                                <span className="font-mono font-bold mr-1">{item.sum}</span>
+                                                <span className="text-slate-400 mx-1">:</span>
+                                                <span className="font-bold">{item.count}</span>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Controls */}
+                    <div className="border-t border-slate-100 p-4 bg-white">
+                        <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+                            <div className={`flex-1 px-4 py-3 rounded-lg text-sm border-l-4 w-full sm:w-auto transition-colors ${msgColor.replace('text-', 'border-').replace('600', '500')} bg-slate-50`}>
+                                <span className={msgColor}>{message}</span>
+                            </div>
+
+                            <div className="flex items-center gap-2">
+                                <button onClick={() => setIsPlaying(!isPlaying)} disabled={isFinished} className={`flex items-center gap-2 px-4 py-2 rounded-lg text-white font-medium transition ${isPlaying ? 'bg-slate-500 hover:bg-slate-600' : 'bg-pink-600 hover:bg-pink-700'} disabled:opacity-50`}>
+                                    {isPlaying ? <Icons.Pause /> : <Icons.Play />}
+                                    <span className="hidden sm:inline">{isPlaying ? "暂停" : "运行"}</span>
+                                </button>
+                                <button onClick={stepForward} disabled={isPlaying || isFinished} className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 font-medium transition disabled:opacity-50">
+                                    <Icons.Step />
+                                    <span className="hidden sm:inline">单步</span>
+                                </button>
+                                <button onClick={() => reset()} className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition" title="重置">
+                                    <Icons.Reset />
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        );
+    };
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+</script>
+</body>
+</html>

@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>全排列 - 算法可视化</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <style>
+        body { background-color: #f8fafc; font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; }
+        .cell-transition { transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+
+        /* 路径格子进入动画 */
+        .path-enter { animation: zoomIn 0.3s forwards; }
+        @keyframes zoomIn { from { opacity: 0; transform: scale(0.5); } to { opacity: 1; transform: scale(1); } }
+
+        /* 结果列表进入动画 */
+        .result-enter { animation: slideUp 0.4s ease-out forwards; }
+        @keyframes slideUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+        /* 选中光标 */
+        .cursor-ring { box-shadow: 0 0 0 4px rgba(232, 121, 249, 0.4); }
+    </style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel">
+    const { useState, useEffect, useRef } = React;
+
+    // --- 图标组件 ---
+    const Icons = {
+        Play: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>,
+        Pause: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>,
+        Step: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>,
+        Reset: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 12" /><path d="M3 3v9h9" /></svg>,
+        Settings: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>,
+        Shuffle: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="16 3 21 3 21 8"></polyline><line x1="4" y1="20" x2="21" y2="3"></line><polyline points="21 16 21 21 16 21"></polyline><line x1="15" y1="15" x2="21" y2="21"></line><line x1="4" y1="4" x2="9" y2="9"></line></svg>
+    };
+
+    // --- 辅助函数 ---
+    const parseInput = (str) => {
+        return str.split(/[,，\s]+/)
+            .map(v => parseInt(v.trim()))
+            .filter(v => !isNaN(v));
+    };
+
+    // 核心：生成回溯步骤轨迹
+    const generateTrace = (nums) => {
+        const trace = [];
+        const path = [];
+        const used = new Array(nums.length).fill(false);
+        const results = [];
+
+        function backtrack() {
+            if (path.length === nums.length) {
+                // Found a permutation
+                trace.push({
+                    type: 'found',
+                    path: [...path],
+                    used: [...used],
+                    results: [...results, [...path]]
+                });
+                results.push([...path]);
+                return;
+            }
+
+            for (let i = 0; i < nums.length; i++) {
+                if (used[i]) continue;
+
+                // 1. Try/Select
+                trace.push({
+                    type: 'select',
+                    val: nums[i],
+                    idx: i,
+                    path: [...path],
+                    used: [...used],
+                    results: [...results]
+                });
+
+                // 2. Push
+                path.push(nums[i]);
+                used[i] = true;
+                trace.push({
+                    type: 'push',
+                    val: nums[i],
+                    idx: i,
+                    path: [...path],
+                    used: [...used],
+                    results: [...results]
+                });
+
+                backtrack();
+
+                // 3. Pop (Backtrack)
+                path.pop();
+                used[i] = false;
+                trace.push({
+                    type: 'pop',
+                    val: nums[i],
+                    idx: i,
+                    path: [...path],
+                    used: [...used],
+                    results: [...results]
+                });
+            }
+        }
+
+        backtrack();
+        trace.push({ type: 'finish', path: [], used: new Array(nums.length).fill(false), results: [...results] });
+        return trace;
+    };
+
+    const App = () => {
+        // --- 状态定义 ---
+        const [inputStr, setInputStr] = useState("1, 2, 3");
+        const [nums, setNums] = useState([1, 2, 3]);
+
+        // 播放控制
+        const [trace, setTrace] = useState([]);
+        const [stepIndex, setStepIndex] = useState(0);
+        const [isPlaying, setIsPlaying] = useState(false);
+        const [isFinished, setIsFinished] = useState(false);
+
+        // 视觉状态 (从 Trace 中提取)
+        const [currentPath, setCurrentPath] = useState([]);
+        const [usedMap, setUsedMap] = useState([]); // Boolean array
+        const [foundResults, setFoundResults] = useState([]);
+        const [highlightIdx, setHighlightIdx] = useState(-1); // 当前正操作的 nums 索引
+        const [message, setMessage] = useState("准备就绪");
+        const [msgColor, setMsgColor] = useState("text-slate-600");
+
+        const timerRef = useRef(null);
+
+        // --- 初始化 ---
+        const reset = (arr = nums) => {
+            setIsPlaying(false);
+            setIsFinished(false);
+
+            // 预计算所有步骤
+            const newTrace = generateTrace(arr);
+            setTrace(newTrace);
+            setStepIndex(0);
+
+            // 初始视觉状态
+            setCurrentPath([]);
+            setUsedMap(new Array(arr.length).fill(false));
+            setFoundResults([]);
+            setHighlightIdx(-1);
+
+            setMessage(`回溯算法准备就绪。全排列总数: ${newTrace[newTrace.length-1].results.length}`);
+            setMsgColor("text-slate-600");
+
+            if (timerRef.current) clearInterval(timerRef.current);
+        };
+
+        const loadInput = () => {
+            const arr = parseInput(inputStr);
+            if (arr.length === 0) return;
+            if (arr.length > 5) {
+                alert("为了演示效果，建议数字个数不要超过 5 个 (排列数增长极快)");
+                return;
+            }
+            setNums(arr);
+            reset(arr);
+        };
+
+        const randomInput = () => {
+            const len = 3;
+            const arr = Array.from({length: len}, () => Math.floor(Math.random() * 9) + 1);
+            // 保证无重复更易理解，也可以有重复
+            const uniqueArr = [...new Set(arr)];
+            while(uniqueArr.length < 3) uniqueArr.push(Math.floor(Math.random() * 9) + 1);
+
+            const str = uniqueArr.join(", ");
+            setInputStr(str);
+            setNums(uniqueArr);
+            reset(uniqueArr);
+        };
+
+        useEffect(() => {
+            reset();
+        }, []);
+
+        // --- 核心步进逻辑 ---
+        const applyStep = (index) => {
+            if (index >= trace.length) {
+                setIsFinished(true);
+                setIsPlaying(false);
+                return;
+            }
+
+            const step = trace[index];
+
+            // 同步状态
+            setCurrentPath(step.path);
+            setUsedMap(step.used);
+            setFoundResults(step.results);
+
+            // 根据类型更新 UI
+            if (step.type === 'select') {
+                setHighlightIdx(step.idx);
+                setMessage(`尝试选择数字 ${step.val}...`);
+                setMsgColor("text-blue-600");
+            } else if (step.type === 'push') {
+                setHighlightIdx(step.idx); // 保持高亮
+                setMessage(`将 ${step.val} 加入路径。进入下一层递归。`);
+                setMsgColor("text-fuchsia-600");
+            } else if (step.type === 'found') {
+                setHighlightIdx(-1);
+                setMessage(`路径长度满足要求！找到排列: [${step.path.join(', ')}]`);
+                setMsgColor("text-green-600");
+            } else if (step.type === 'pop') {
+                setHighlightIdx(step.idx);
+                setMessage(`回溯 (Backtrack)：移除 ${step.val}，尝试下一个选项。`);
+                setMsgColor("text-slate-500");
+            } else if (step.type === 'finish') {
+                setHighlightIdx(-1);
+                setMessage("搜索完成！已找到所有排列。");
+                setIsFinished(true);
+                setIsPlaying(false);
+                setMsgColor("text-slate-800");
+            }
+        };
+
+        const stepForward = () => {
+            if (stepIndex < trace.length) {
+                applyStep(stepIndex);
+                setStepIndex(prev => prev + 1);
+            }
+        };
+
+        // --- 自动播放 ---
+        useEffect(() => {
+            if (isPlaying && !isFinished) {
+                timerRef.current = setInterval(() => {
+                    stepForward();
+                }, 800); // 速度适中
+            }
+            return () => clearInterval(timerRef.current);
+        }, [isPlaying, isFinished, stepIndex, trace]);
+
+        // --- 渲染辅助 ---
+
+        // 渲染可选数字池
+        const renderPool = () => {
+            return (
+                <div className="flex flex-wrap justify-center gap-3">
+                    {nums.map((num, idx) => {
+                        const isUsed = usedMap[idx];
+                        const isHighlight = highlightIdx === idx;
+
+                        let baseClass = "w-12 h-12 flex items-center justify-center rounded-lg border-2 font-bold text-lg transition-all duration-300 ";
+                        if (isUsed) {
+                            baseClass += "bg-slate-100 border-slate-200 text-slate-300 scale-90 ";
+                        } else if (isHighlight) {
+                            baseClass += "bg-fuchsia-100 border-fuchsia-500 text-fuchsia-700 cursor-ring scale-110 ";
+                        } else {
+                            baseClass += "bg-white border-slate-300 text-slate-700 hover:border-fuchsia-300 ";
+                        }
+
+                        return (
+                            <div key={idx} className="flex flex-col items-center">
+                                <div className={baseClass}>
+                                    {num}
+                                </div>
+                                <span className="text-[10px] text-slate-300 mt-1">{idx}</span>
+                            </div>
+                        );
+                    })}
+                </div>
+            );
+        };
+
+        return (
+            <div className="max-w-4xl mx-auto p-4 sm:p-6">
+                {/* 1. 顶部配置 */}
+                <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4 mb-6">
+                    <div className="flex items-center gap-2 mb-3 text-slate-700 font-bold">
+                        <Icons.Settings />
+                        <span>数据配置</span>
+                    </div>
+                    <div className="flex flex-col sm:flex-row gap-3">
+                        <input
+                            type="text"
+                            value={inputStr}
+                            onChange={(e) => setInputStr(e.target.value)}
+                            className="flex-1 border border-slate-300 rounded-lg px-3 py-2 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-fuchsia-500"
+                            placeholder="1, 2, 3"
+                        />
+                        <div className="flex gap-2">
+                            <button onClick={loadInput} className="px-4 py-2 bg-fuchsia-600 text-white rounded-lg hover:bg-fuchsia-700 transition font-medium text-sm">
+                                加载
+                            </button>
+                            <button onClick={randomInput} className="px-3 py-2 bg-slate-100 text-slate-600 rounded-lg hover:bg-slate-200 transition" title="随机生成">
+                                <Icons.Shuffle />
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                {/* 2. 主体区 */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                    {/* 左侧：操作面板 */}
+                    <div className="bg-white rounded-xl shadow-lg border border-slate-200 overflow-hidden flex flex-col">
+                        <div className="border-b border-slate-100 bg-slate-50 p-4">
+                            <h1 className="text-xl font-bold text-slate-800">全排列 (Permutations)</h1>
+                            <p className="text-xs text-slate-500 mt-1">回溯算法 (Backtracking) · O(N!)</p>
+                        </div>
+
+                        <div className="p-6 flex-1 flex flex-col items-center justify-start gap-8 min-h-[300px]">
+
+                            {/* Pool Section */}
+                            <div className="w-full">
+                                <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 text-center">可选数字 (Options)</div>
+                                {renderPool()}
+                            </div>
+
+                            {/* Arrow */}
+                            <div className="text-slate-300">
+                                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 5v14M19 12l-7 7-7-7"/></svg>
+                            </div>
+
+                            {/* Path Section */}
+                            <div className="w-full">
+                                <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 text-center">当前路径 (Current Path)</div>
+                                <div className="flex justify-center gap-2 min-h-[60px]">
+                                    {/* Placeholders for full length */}
+                                    {Array.from({length: nums.length}).map((_, i) => {
+                                        const val = currentPath[i];
+                                        const hasVal = val !== undefined;
+                                        return (
+                                            <div key={i} className={`w-14 h-14 rounded-lg border-2 border-dashed flex items-center justify-center font-bold text-xl transition-all duration-300
+                                                ${hasVal ? 'border-fuchsia-500 bg-fuchsia-50 text-fuchsia-700 border-solid path-enter' : 'border-slate-200 text-slate-300'}
+                                            `}>
+                                                {hasVal ? val : ''}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+
+                        </div>
+
+                        {/* Controls */}
+                        <div className="border-t border-slate-100 p-4 bg-white mt-auto">
+                            <div className="flex flex-col gap-3">
+                                <div className={`px-4 py-3 rounded-lg text-sm border-l-4 transition-colors bg-slate-50 border-slate-400 ${msgColor.replace('text-', 'border-').replace('600', '500')}`}>
+                                    <span className={msgColor}>{message}</span>
+                                </div>
+
+                                <div className="flex items-center justify-center gap-2">
+                                    <button onClick={() => setIsPlaying(!isPlaying)} disabled={isFinished} className={`flex items-center gap-2 px-4 py-2 rounded-lg text-white font-medium transition ${isPlaying ? 'bg-slate-500 hover:bg-slate-600' : 'bg-fuchsia-600 hover:bg-fuchsia-700'} disabled:opacity-50`}>
+                                        {isPlaying ? <Icons.Pause /> : <Icons.Play />}
+                                        <span className="hidden sm:inline">{isPlaying ? "暂停" : "运行"}</span>
+                                    </button>
+                                    <button onClick={stepForward} disabled={isPlaying || isFinished} className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 font-medium transition disabled:opacity-50">
+                                        <Icons.Step />
+                                        <span className="hidden sm:inline">单步</span>
+                                    </button>
+                                    <button onClick={() => reset()} className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition" title="重置">
+                                        <Icons.Reset />
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* 右侧：结果列表 */}
+                    <div className="bg-white rounded-xl shadow-lg border border-slate-200 overflow-hidden flex flex-col max-h-[600px]">
+                        <div className="border-b border-slate-100 bg-slate-50 p-4 flex justify-between items-center">
+                            <h2 className="font-bold text-slate-700">结果集 (Results)</h2>
+                            <span className="bg-green-100 text-green-700 px-2 py-1 rounded text-xs font-bold">{foundResults.length} Found</span>
+                        </div>
+                        <div className="p-4 overflow-y-auto flex-1 bg-slate-50/50">
+                            {foundResults.length === 0 && (
+                                <div className="text-center text-slate-400 italic mt-10">等待搜索...</div>
+                            )}
+                            <div className="grid grid-cols-1 gap-2">
+                                {foundResults.map((res, idx) => (
+                                    <div key={idx} className="bg-white p-3 rounded border border-slate-200 shadow-sm flex items-center gap-2 result-enter">
+                                        <span className="text-xs text-slate-400 font-mono w-6">#{idx + 1}</span>
+                                        <div className="flex gap-1">
+                                            {res.map((n, i) => (
+                                                <span key={i} className="w-6 h-6 flex items-center justify-center bg-green-50 text-green-700 rounded text-sm font-bold">{n}</span>
+                                            ))}
+                                        </div>
+                                    </div>
+                                ))}
+                                {/* Dummy div to scroll into view could go here */}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        );
+    };
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+</script>
+</body>
+</html>

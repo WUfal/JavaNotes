@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>验证二叉搜索树 - 算法可视化</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <style>
+        body { background-color: #f8fafc; font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; }
+        .smooth-transition { transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1); }
+        .node-enter { animation: popIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; }
+        @keyframes popIn {
+            0% { transform: scale(0); opacity: 0; }
+            70% { transform: scale(1.1); opacity: 1; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+
+        /* 连线动画 */
+        .line-draw { stroke-dasharray: 1000; stroke-dashoffset: 1000; animation: draw 1s forwards; }
+        @keyframes draw { to { stroke-dashoffset: 0; } }
+    </style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel">
+    const { useState, useEffect, useRef, useMemo } = React;
+
+    // --- 图标组件 ---
+    const Icons = {
+        Play: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>,
+        Pause: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>,
+        Step: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>,
+        Reset: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 12" /><path d="M3 3v9h9" /></svg>,
+        Settings: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>,
+        Shuffle: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="16 3 21 3 21 8"></polyline><line x1="4" y1="20" x2="21" y2="3"></line><polyline points="21 16 21 21 16 21"></polyline><line x1="15" y1="15" x2="21" y2="21"></line><line x1="4" y1="4" x2="9" y2="9"></line></svg>
+    };
+
+    // --- 树节点类 ---
+    class TreeNode {
+        constructor(val, id) {
+            this.val = val;
+            this.id = id;
+            this.left = null;
+            this.right = null;
+            this.x = 0;
+            this.y = 0;
+        }
+    }
+
+    // --- 辅助函数：构建树 ---
+    const buildTree = (arr) => {
+        if (!arr || arr.length === 0) return null;
+        const root = new TreeNode(arr[0], `node-0-${Date.now()}`);
+        const queue = [root];
+        let i = 1;
+        while (i < arr.length) {
+            const curr = queue.shift();
+            if (i < arr.length && arr[i] !== null) {
+                curr.left = new TreeNode(arr[i], `node-${i}-${Date.now()}`);
+                queue.push(curr.left);
+            }
+            i++;
+            if (i < arr.length && arr[i] !== null) {
+                curr.right = new TreeNode(arr[i], `node-${i}-${Date.now()}`);
+                queue.push(curr.right);
+            }
+            i++;
+        }
+        return root;
+    };
+
+    // --- 辅助函数：计算布局 ---
+    const calculatePositions = (node, depth = 0, x = 50, layerGap = 80) => {
+        if (!node) return;
+        const spread = 25 / Math.pow(2, depth);
+        node.y = depth * layerGap + 40;
+        node.x = x;
+        if (node.left) calculatePositions(node.left, depth + 1, x - spread, layerGap);
+        if (node.right) calculatePositions(node.right, depth + 1, x + spread, layerGap);
+    };
+
+    const flattenTree = (root) => {
+        const nodes = [];
+        const links = [];
+        if (!root) return { nodes, links };
+        const traverse = (node) => {
+            if (!node) return;
+            nodes.push(node);
+            if (node.left) {
+                links.push({ from: node, to: node.left, id: `${node.id}-L` });
+                traverse(node.left);
+            }
+            if (node.right) {
+                links.push({ from: node, to: node.right, id: `${node.id}-R` });
+                traverse(node.right);
+            }
+        };
+        traverse(root);
+        return { nodes, links };
+    };
+
+    const App = () => {
+        // --- 状态定义 ---
+        const [inputStr, setInputStr] = useState("5, 1, 4, null, null, 3, 6");
+
+        // 核心数据
+        const [rootNode, setRootNode] = useState(null);
+
+        // 算法状态
+        const [stack, setStack] = useState([]); // DFS Stack: { node, min, max }
+        const [currentNode, setCurrentNode] = useState(null);
+        const [currentRange, setCurrentRange] = useState({ min: -Infinity, max: Infinity });
+        const [validNodes, setValidNodes] = useState(new Set()); // IDs of validated nodes
+        const [errorNodeId, setErrorNodeId] = useState(null);
+
+        // 运行控制
+        const [isPlaying, setIsPlaying] = useState(false);
+        const [isFinished, setIsFinished] = useState(false);
+        const [message, setMessage] = useState("准备就绪");
+        const [msgColor, setMsgColor] = useState("text-slate-600");
+
+        const timerRef = useRef(null);
+
+        // --- 初始化 ---
+        const initTree = (str) => {
+            const arr = str.split(/[,，\s]+/).map(n => n.trim() === 'null' ? null : parseInt(n)).filter(n => !isNaN(n) || n === null);
+            const root = buildTree(arr);
+            calculatePositions(root);
+
+            setRootNode(root);
+            setStack(root ? [{ node: root, min: -Infinity, max: Infinity }] : []);
+            setCurrentNode(null);
+            setCurrentRange({ min: -Infinity, max: Infinity });
+            setValidNodes(new Set());
+            setErrorNodeId(null);
+            setIsFinished(false);
+            setIsPlaying(false);
+            setMessage("树已构建。准备开始 DFS 验证。");
+            setMsgColor("text-slate-600");
+
+            if (timerRef.current) clearInterval(timerRef.current);
+        };
+
+        const loadInput = () => initTree(inputStr);
+        const randomInput = () => {
+            // Generate a valid or almost valid BST
+            const isValid = Math.random() > 0.5;
+            let arr;
+            if (isValid) {
+                arr = [5, 3, 7, 2, 4, 6, 8]; // Valid BST
+            } else {
+                arr = [5, 1, 4, null, null, 3, 6]; // Invalid (Example 1 in LeetCode)
+            }
+            const str = arr.map(n => n === null ? 'null' : n).join(", ");
+            setInputStr(str);
+            initTree(str);
+        };
+
+        useEffect(() => {
+            initTree(inputStr);
+        }, []);
+
+        // --- 核心算法逻辑 (Step) ---
+        const stepForward = () => {
+            if (isFinished) return;
+
+            if (stack.length === 0) {
+                setIsFinished(true);
+                setIsPlaying(false);
+                setMessage("遍历完成，未发现错误。这是一棵有效的二叉搜索树！");
+                setMsgColor("text-emerald-600");
+                setCurrentNode(null);
+                return;
+            }
+
+            const nextStack = [...stack];
+            const { node, min, max } = nextStack.pop();
+
+            setCurrentNode(node);
+            setCurrentRange({ min, max });
+
+            // Check Validity
+            if (node.val <= min || node.val >= max) {
+                setErrorNodeId(node.id);
+                setIsFinished(true);
+                setIsPlaying(false);
+                setMessage(`节点 ${node.val} 违反规则！它必须在 (${min === -Infinity ? '-∞' : min}, ${max === Infinity ? '+∞' : max}) 范围内。`);
+                setMsgColor("text-red-600");
+                return;
+            } else {
+                // Valid
+                setValidNodes(prev => new Set(prev).add(node.id));
+                setMessage(`检查节点 ${node.val}：在区间 (${min === -Infinity ? '-∞' : min}, ${max === Infinity ? '+∞' : max}) 内。合法。`);
+                setMsgColor("text-emerald-600");
+
+                // Push children (Right first to visit Left first in Stack DFS)
+                if (node.right) {
+                    nextStack.push({ node: node.right, min: node.val, max: max });
+                }
+                if (node.left) {
+                    nextStack.push({ node: node.left, min: min, max: node.val });
+                }
+            }
+
+            setStack(nextStack);
+        };
+
+        // --- 自动播放 ---
+        useEffect(() => {
+            if (isPlaying && !isFinished) {
+                timerRef.current = setInterval(() => {
+                    stepForward();
+                }, 1200);
+            }
+            return () => clearInterval(timerRef.current);
+        }, [isPlaying, isFinished, stack, validNodes]);
+
+        // --- 渲染辅助 ---
+        const { nodes, links } = useMemo(() => flattenTree(rootNode), [rootNode]);
+
+        const formatInf = (val) => {
+            if (val === Infinity) return "+∞";
+            if (val === -Infinity) return "-∞";
+            return val;
+        };
+
+        return (
+            <div className="max-w-4xl mx-auto p-4 sm:p-6">
+                {/* 1. 顶部配置 */}
+                <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4 mb-6">
+                    <div className="flex items-center gap-2 mb-3 text-slate-700 font-bold">
+                        <Icons.Settings />
+                        <span>数据配置</span>
+                    </div>
+                    <div className="flex flex-col sm:flex-row gap-3">
+                        <input
+                            type="text"
+                            value={inputStr}
+                            onChange={(e) => setInputStr(e.target.value)}
+                            className="flex-1 border border-slate-300 rounded-lg px-3 py-2 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                            placeholder="5, 1, 4, null, null, 3, 6"
+                        />
+                        <div className="flex gap-2">
+                            <button onClick={loadInput} className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition font-medium text-sm">
+                                加载
+                            </button>
+                            <button onClick={randomInput} className="px-3 py-2 bg-slate-100 text-slate-600 rounded-lg hover:bg-slate-200 transition" title="随机">
+                                <Icons.Shuffle />
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                {/* 2. 主体区 */}
+                <div className="bg-white rounded-xl shadow-lg border border-slate-200 overflow-hidden">
+                    {/* Header */}
+                    <div className="border-b border-slate-100 bg-slate-50 p-4 flex flex-col sm:flex-row justify-between items-center gap-4">
+                        <div>
+                            <h1 className="text-xl font-bold text-slate-800">验证二叉搜索树</h1>
+                            <p className="text-xs text-slate-500 mt-1">深度优先搜索 (DFS) + 递归边界约束 · LeetCode 98</p>
+                        </div>
+                        <div className="flex items-center gap-4 text-xs font-bold text-slate-500">
+                            <div className="flex items-center gap-1"><span className="w-3 h-3 rounded-full bg-emerald-500"></span> Valid</div>
+                            <div className="flex items-center gap-1"><span className="w-3 h-3 rounded-full bg-blue-500"></span> Checking</div>
+                            <div className="flex items-center gap-1"><span className="w-3 h-3 rounded-full bg-red-500"></span> Invalid</div>
+                        </div>
+                    </div>
+
+                    {/* Canvas */}
+                    <div className="p-4 sm:p-8 bg-slate-50 min-h-[400px] relative flex justify-center items-start overflow-hidden select-none">
+                        <div className="relative w-full h-[350px]">
+                            {/* SVG Lines */}
+                            <svg className="absolute inset-0 w-full h-full pointer-events-none z-0">
+                                {links.map(link => (
+                                    <line
+                                        key={link.id}
+                                        x1={`${link.from.x}%`} y1={link.from.y}
+                                        x2={`${link.to.x}%`} y2={link.to.y}
+                                        stroke="#cbd5e1" strokeWidth="2"
+                                    />
+                                ))}
+                            </svg>
+
+                            {/* Nodes */}
+                            {nodes.map(node => {
+                                const isValid = validNodes.has(node.id);
+                                const isCurrent = currentNode && node.id === currentNode.id;
+                                const isError = node.id === errorNodeId;
+
+                                let bgClass = "bg-white border-slate-300 text-slate-500";
+                                if (isValid) bgClass = "bg-emerald-100 border-emerald-500 text-emerald-700";
+                                if (isCurrent) bgClass = "bg-blue-100 border-blue-500 text-blue-700 scale-110 shadow-md ring-4 ring-blue-100 z-20";
+                                if (isError) bgClass = "bg-red-100 border-red-500 text-red-700 scale-110 shadow-md ring-4 ring-red-100 z-20";
+
+                                return (
+                                    <div
+                                        key={node.id}
+                                        className={`absolute -ml-6 -mt-6 w-12 h-12 rounded-full flex items-center justify-center border-2 font-bold text-lg smooth-transition z-10 node-enter ${bgClass}`}
+                                        style={{ left: `${node.x}%`, top: `${node.y}px` }}
+                                    >
+                                        {node.val}
+
+                                        {/* Constraints Label (Only for current active node to avoid clutter) */}
+                                        {isCurrent && (
+                                            <div className="absolute -top-10 left-1/2 -translate-x-1/2 bg-slate-800 text-white text-[10px] px-2 py-1 rounded shadow-lg whitespace-nowrap opacity-90 z-30 pointer-events-none">
+                                                ({formatInf(currentRange.min)}, {formatInf(currentRange.max)})
+                                                <div className="absolute bottom-[-4px] left-1/2 -translate-x-1/2 w-2 h-2 bg-slate-800 rotate-45"></div>
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            })}
+
+                            {nodes.length === 0 && <div className="absolute inset-0 flex items-center justify-center text-slate-400 italic">Empty Tree</div>}
+                        </div>
+                    </div>
+
+                    {/* Controls */}
+                    <div className="border-t border-slate-100 p-4 bg-white">
+                        <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+                            <div className={`flex-1 px-4 py-3 rounded-lg text-sm border-l-4 w-full sm:w-auto transition-colors bg-slate-50 border-slate-400 ${msgColor.replace('text-', 'border-').replace('600', '500')} ${msgColor}`}>
+                                {message}
+                            </div>
+
+                            <div className="flex items-center gap-2">
+                                <button onClick={() => setIsPlaying(!isPlaying)} disabled={isFinished} className={`flex items-center gap-2 px-4 py-2 rounded-lg text-white font-medium transition ${isPlaying ? 'bg-amber-500 hover:bg-amber-600' : 'bg-emerald-600 hover:bg-emerald-700'} disabled:opacity-50`}>
+                                    {isPlaying ? <Icons.Pause /> : <Icons.Play />}
+                                    <span className="hidden sm:inline">{isPlaying ? "暂停" : "运行"}</span>
+                                </button>
+                                <button onClick={stepForward} disabled={isPlaying || isFinished} className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 font-medium transition disabled:opacity-50">
+                                    <Icons.Step />
+                                    <span className="hidden sm:inline">单步</span>
+                                </button>
+                                <button onClick={() => reset()} className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition" title="重置">
+                                    <Icons.Reset />
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        );
+    };
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+</script>
+</body>
+</html>

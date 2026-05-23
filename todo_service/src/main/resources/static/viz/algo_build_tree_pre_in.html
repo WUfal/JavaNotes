@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>构造二叉树 - 算法可视化</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <style>
+        body { background-color: #f8fafc; font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; }
+        .smooth-transition { transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1); }
+        .node-enter { animation: popIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; }
+        @keyframes popIn {
+            0% { transform: scale(0); opacity: 0; }
+            70% { transform: scale(1.1); opacity: 1; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+
+        /* 数组格子动画 */
+        .array-cell { transition: all 0.3s ease; }
+        .highlight-root { background-color: #fbbf24; border-color: #d97706; color: #78350f; transform: scale(1.1); z-index: 10; }
+        .highlight-left { background-color: #d1fae5; border-color: #10b981; color: #065f46; }
+        .highlight-right { background-color: #ffe4e6; border-color: #f43f5e; color: #881337; }
+        .dimmed { opacity: 0.3; }
+
+        /* 连线动画 */
+        .line-draw { stroke-dasharray: 1000; stroke-dashoffset: 1000; animation: draw 1s forwards; }
+        @keyframes draw { to { stroke-dashoffset: 0; } }
+    </style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel">
+    const { useState, useEffect, useRef, useMemo } = React;
+
+    // --- 图标组件 ---
+    const Icons = {
+        Play: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>,
+        Pause: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>,
+        Step: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>,
+        Reset: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 12" /><path d="M3 3v9h9" /></svg>,
+        Settings: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>,
+        Shuffle: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="16 3 21 3 21 8"></polyline><line x1="4" y1="20" x2="21" y2="3"></line><polyline points="21 16 21 21 16 21"></polyline><line x1="15" y1="15" x2="21" y2="21"></line><line x1="4" y1="4" x2="9" y2="9"></line></svg>
+    };
+
+    // --- 树节点类 (用于内部逻辑) ---
+    class TreeNode {
+        constructor(val, id) {
+            this.val = val;
+            this.id = id;
+            this.left = null;
+            this.right = null;
+            this.x = 0;
+            this.y = 0;
+        }
+    }
+
+    // --- 辅助函数：计算布局 ---
+    const calculatePositions = (node, depth = 0, x = 50, layerGap = 80) => {
+        if (!node) return;
+        const spread = 25 / Math.pow(2, depth);
+        node.y = depth * layerGap + 40;
+        node.x = x;
+        if (node.left) calculatePositions(node.left, depth + 1, x - spread, layerGap);
+        if (node.right) calculatePositions(node.right, depth + 1, x + spread, layerGap);
+    };
+
+    const flattenTree = (root) => {
+        const nodes = [];
+        const links = [];
+        if (!root) return { nodes, links };
+        const traverse = (node) => {
+            if (!node) return;
+            nodes.push(node);
+            if (node.left) {
+                links.push({ from: node, to: node.left, id: `${node.id}-L` });
+                traverse(node.left);
+            }
+            if (node.right) {
+                links.push({ from: node, to: node.right, id: `${node.id}-R` });
+                traverse(node.right);
+            }
+        };
+        traverse(root);
+        return { nodes, links };
+    };
+
+    const App = () => {
+        // --- 状态定义 ---
+        const [preorderStr, setPreorderStr] = useState("3, 9, 20, 15, 7");
+        const [inorderStr, setInorderStr] = useState("9, 3, 15, 20, 7");
+
+        // 核心数据
+        const [preorder, setPreorder] = useState([3, 9, 20, 15, 7]);
+        const [inorder, setInorder] = useState([9, 3, 15, 20, 7]);
+        const [rootNode, setRootNode] = useState(null); // The tree being built
+
+        // 算法状态
+        // Task Frame: { inStart, inEnd, parentNode, side ('left'/'right') }
+        const [stack, setStack] = useState([]);
+        const [preIndex, setPreIndex] = useState(0); // global pointer for preorder
+        const [activeRange, setActiveRange] = useState({ start: 0, end: 4 }); // Inorder range
+        const [currentRootVal, setCurrentRootVal] = useState(null);
+
+        // 运行控制
+        const [isPlaying, setIsPlaying] = useState(false);
+        const [isFinished, setIsFinished] = useState(false);
+        const [message, setMessage] = useState("准备就绪");
+        const [msgColor, setMsgColor] = useState("text-slate-600");
+
+        const timerRef = useRef(null);
+
+        // --- 初始化 & 生成随机树 ---
+        const generateRandomTreeAndTraversals = () => {
+            // Generate a random BST-ish structure (values 1-20, unique)
+            const count = 5 + Math.floor(Math.random() * 4); // 5-8 nodes
+            const nums = Array.from({length: count}, (_, i) => i + 1).sort(() => Math.random() - 0.5);
+
+            // Build a random tree first
+            const root = new TreeNode(nums[0], `node-${nums[0]}`);
+            const q = [root];
+            let idx = 1;
+            while(idx < nums.length) {
+                const curr = q[Math.floor(Math.random() * q.length)]; // Attach to random existing node
+                // Try left
+                if (!curr.left && idx < nums.length) {
+                    if (Math.random() > 0.3) { // 70% chance
+                        curr.left = new TreeNode(nums[idx++], `node-${Date.now()}-${idx}`);
+                        q.push(curr.left);
+                    }
+                }
+                // Try right
+                if (!curr.right && idx < nums.length) {
+                    if (Math.random() > 0.3) {
+                        curr.right = new TreeNode(nums[idx++], `node-${Date.now()}-${idx}`);
+                        q.push(curr.right);
+                    }
+                }
+                // If both full or skipped, remove from q possibility to avoid infinite loop if bad luck?
+                // Simplified: just attach sequentially level order roughly
+            }
+
+            // Generate traversals
+            const pre = [];
+            const inOrd = [];
+
+            // Helper to fill arrays
+            // We need a robust random tree generator. Let's use a simpler approach:
+            // Insert random values into a BST? No, standard binary tree.
+
+            // Let's redo: Standard recursive random builder
+            let valCounter = 1;
+            const buildRandom = (depth) => {
+                if (depth > 3 || Math.random() < 0.1) return null;
+                const node = new TreeNode(valCounter++, `node-${Math.random()}`);
+                if (Math.random() > 0.3) node.left = buildRandom(depth + 1);
+                if (Math.random() > 0.3) node.right = buildRandom(depth + 1);
+                return node;
+            }
+            // Ensure at least some nodes
+            let randomRoot = null;
+            while (!randomRoot || valCounter < 4) {
+                valCounter = 1;
+                randomRoot = buildRandom(0);
+            }
+
+            const traverse = (node) => {
+                if (!node) return;
+                pre.push(node.val);
+                traverse(node.left);
+                inOrd.push(node.val);
+                traverse(node.right);
+            }
+            traverse(randomRoot);
+
+            return { pre, in: inOrd };
+        };
+
+        const randomInput = () => {
+            const { pre, in: inOrd } = generateRandomTreeAndTraversals();
+            setPreorderStr(pre.join(", "));
+            setInorderStr(inOrd.join(", "));
+            initAlgorithm(pre, inOrd);
+        };
+
+        const parseInput = (str) => str.split(/[,，\s]+/).map(n => parseInt(n.trim())).filter(n => !isNaN(n));
+
+        const initAlgorithm = (preArr, inArr) => {
+            setPreorder(preArr);
+            setInorder(inArr);
+
+            setRootNode(null);
+            setPreIndex(0);
+            setActiveRange({ start: 0, end: inArr.length - 1 });
+            setCurrentRootVal(null);
+
+            // Initial Task: Build root
+            setStack([{ inStart: 0, inEnd: inArr.length - 1, parentNode: null, side: null }]);
+
+            setIsFinished(false);
+            setIsPlaying(false);
+            setMessage("准备开始构造。根节点总是 Preorder 的第一个元素。");
+            setMsgColor("text-slate-600");
+
+            if (timerRef.current) clearInterval(timerRef.current);
+        };
+
+        const loadInput = () => {
+            const pre = parseInput(preorderStr);
+            const inOrd = parseInput(inorderStr);
+            if (pre.length !== inOrd.length || pre.length === 0) {
+                alert("Preorder 和 Inorder 长度必须一致且非空");
+                return;
+            }
+            initAlgorithm(pre, inOrd);
+        };
+
+        useEffect(() => {
+            initAlgorithm(preorder, inorder);
+        }, []);
+
+        // --- 核心算法逻辑 (Step) ---
+        const stepForward = () => {
+            if (isFinished) return;
+
+            if (stack.length === 0) {
+                setIsFinished(true);
+                setIsPlaying(false);
+                setMessage("构造完成！");
+                setMsgColor("text-green-600");
+                setActiveRange({ start: -1, end: -1 });
+                setCurrentRootVal(null);
+                return;
+            }
+
+            const nextStack = [...stack];
+            const frame = nextStack.pop();
+            const { inStart, inEnd, parentNode, side } = frame;
+
+            setActiveRange({ start: inStart, end: inEnd });
+
+            // Base case: empty range
+            if (inStart > inEnd) {
+                setMessage(`区间 [${inStart}, ${inEnd}] 为空，返回 null。`);
+                // No node created.
+                // Since visuals are updated via setRootNode which holds the object reference,
+                // and we already linked parent before pushing (wait, we link AFTER creating).
+                // Actually, we need to create node here.
+
+                // Correction: In recursion, we check range, create node, THEN recurse.
+                // In stack simulation, when we pop a frame, we are "entering" the function call.
+
+                // So if empty range, we just continue (equivalent to returning null).
+                // But we need to update state to trigger next step visually immediately or next click?
+                // Let's setMessage and return to allow user to see "null" logic.
+                setStack(nextStack);
+                return;
+            }
+
+            // 1. Pick root from Preorder
+            const rootVal = preorder[preIndex];
+            setCurrentRootVal(rootVal);
+
+            // 2. Create Node
+            const newNode = new TreeNode(rootVal, `node-${rootVal}-${Date.now()}`);
+
+            // Link to parent
+            if (parentNode) {
+                if (side === 'left') parentNode.left = newNode;
+                else parentNode.right = newNode;
+            } else {
+                setRootNode(newNode); // It's the absolute root
+            }
+
+            // Recalculate positions for visual
+            // We clone the root to trigger re-render of the whole tree
+            if (rootNode) calculatePositions(rootNode);
+            else calculatePositions(newNode); // First node
+
+            // 3. Find in Inorder to split
+            let rootIndex = -1;
+            for (let i = inStart; i <= inEnd; i++) {
+                if (inorder[i] === rootVal) {
+                    rootIndex = i;
+                    break;
+                }
+            }
+
+            setPreIndex(prev => prev + 1);
+            setMessage(`Preorder 取出 ${rootVal} 为根。在 Inorder 中索引为 ${rootIndex}。划分左右子树。`);
+            setMsgColor("text-blue-600");
+
+            // 4. Push children tasks
+            // Stack is LIFO, so push Right then Left to process Left first
+            // Right Subtree: (rootIndex + 1, inEnd)
+            nextStack.push({
+                inStart: rootIndex + 1,
+                inEnd: inEnd,
+                parentNode: newNode,
+                side: 'right'
+            });
+
+            // Left Subtree: (inStart, rootIndex - 1)
+            nextStack.push({
+                inStart: inStart,
+                inEnd: rootIndex - 1,
+                parentNode: newNode,
+                side: 'left'
+            });
+
+            setStack(nextStack);
+        };
+
+        // --- 自动播放 ---
+        useEffect(() => {
+            if (isPlaying && !isFinished) {
+                timerRef.current = setInterval(() => {
+                    stepForward();
+                }, 1200);
+            }
+            return () => clearInterval(timerRef.current);
+        }, [isPlaying, isFinished, stack, preIndex, rootNode]);
+
+        // --- 渲染辅助 ---
+        // Need to traverse the current tree structure to flatten it for rendering
+        const { nodes, links } = useMemo(() => flattenTree(rootNode), [rootNode, preIndex]); // dependency on preIndex ensures refresh
+
+        return (
+            <div className="max-w-4xl mx-auto p-4 sm:p-6">
+                {/* 1. 顶部配置 */}
+                <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4 mb-6">
+                    <div className="flex items-center gap-2 mb-3 text-slate-700 font-bold">
+                        <Icons.Settings />
+                        <span>数据配置</span>
+                    </div>
+                    <div className="flex flex-col gap-3">
+                        <div className="flex items-center gap-2">
+                            <label className="w-16 text-xs font-bold text-slate-400 uppercase">Preorder</label>
+                            <input
+                                type="text"
+                                value={preorderStr}
+                                onChange={(e) => setPreorderStr(e.target.value)}
+                                className="flex-1 border border-slate-300 rounded-lg px-3 py-2 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            />
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <label className="w-16 text-xs font-bold text-slate-400 uppercase">Inorder</label>
+                            <input
+                                type="text"
+                                value={inorderStr}
+                                onChange={(e) => setInorderStr(e.target.value)}
+                                className="flex-1 border border-slate-300 rounded-lg px-3 py-2 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            />
+                        </div>
+                        <div className="flex gap-2 justify-end mt-1">
+                            <button onClick={loadInput} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-medium text-sm">
+                                加载数据
+                            </button>
+                            <button onClick={randomInput} className="px-3 py-2 bg-slate-100 text-slate-600 rounded-lg hover:bg-slate-200 transition" title="生成随机树">
+                                <Icons.Shuffle />
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                {/* 2. 主体区 */}
+                <div className="bg-white rounded-xl shadow-lg border border-slate-200 overflow-hidden">
+                    {/* Header */}
+                    <div className="border-b border-slate-100 bg-slate-50 p-4">
+                        <h1 className="text-xl font-bold text-slate-800">从前序与中序遍历构造二叉树</h1>
+                        <p className="text-xs text-slate-500 mt-1">递归构造 · Divide & Conquer · LeetCode 105</p>
+                    </div>
+
+                    {/* Arrays Visualization */}
+                    <div className="p-4 bg-slate-50/50 border-b border-slate-100 space-y-4">
+                        {/* Preorder Array */}
+                        <div>
+                            <div className="text-xs font-bold text-slate-400 uppercase mb-1">Preorder (Root -> Left -> Right)</div>
+                            <div className="flex flex-wrap gap-1">
+                                {preorder.map((val, idx) => (
+                                    <div key={idx} className={`
+                                        w-8 h-8 sm:w-10 sm:h-10 flex items-center justify-center rounded border font-mono font-bold text-sm array-cell
+                                        ${idx === preIndex && !isFinished ? 'highlight-root shadow-md' : idx < preIndex ? 'bg-slate-200 text-slate-400 border-slate-300' : 'bg-white border-slate-200 text-slate-600'}
+                                    `}>
+                                        {val}
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Inorder Array */}
+                        <div>
+                            <div className="text-xs font-bold text-slate-400 uppercase mb-1">Inorder (Left -> Root -> Right)</div>
+                            <div className="flex flex-wrap gap-1">
+                                {inorder.map((val, idx) => {
+                                    let statusClass = "bg-white border-slate-200 text-slate-600";
+                                    // Highlight logic based on active range and current root
+                                    const inRange = idx >= activeRange.start && idx <= activeRange.end;
+
+                                    if (inRange) {
+                                        if (val === currentRootVal) statusClass = "highlight-root shadow-md"; // Current Root
+                                        else if (currentRootVal !== null) {
+                                            // Determine Left/Right based on index relative to root index
+                                            // Need to find root index in inorder again or use visual trick
+                                            const rootIdx = inorder.indexOf(currentRootVal);
+                                            if (idx < rootIdx) statusClass = "highlight-left"; // Left sub
+                                            else if (idx > rootIdx) statusClass = "highlight-right"; // Right sub
+                                        } else {
+                                            // Just active range
+                                            statusClass = "bg-blue-50 border-blue-200 text-blue-800";
+                                        }
+                                    } else {
+                                        statusClass = "dimmed bg-slate-100 border-slate-200";
+                                    }
+
+                                    return (
+                                        <div key={idx} className={`
+                                            w-8 h-8 sm:w-10 sm:h-10 flex items-center justify-center rounded border font-mono font-bold text-sm array-cell
+                                            ${statusClass}
+                                        `}>
+                                            {val}
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Canvas (Tree) */}
+                    <div className="p-4 sm:p-8 bg-slate-50 min-h-[350px] relative flex justify-center items-start overflow-hidden select-none">
+                        <div className="relative w-full h-[300px]">
+                            {/* SVG Lines */}
+                            <svg className="absolute inset-0 w-full h-full pointer-events-none z-0">
+                                {links.map(link => (
+                                    <line
+                                        key={link.id}
+                                        x1={`${link.from.x}%`} y1={link.from.y}
+                                        x2={`${link.to.x}%`} y2={link.to.y}
+                                        stroke="#cbd5e1" strokeWidth="2"
+                                        className="line-draw"
+                                    />
+                                ))}
+                            </svg>
+
+                            {/* Nodes */}
+                            {nodes.map(node => (
+                                <div
+                                    key={node.id}
+                                    className={`absolute -ml-6 -mt-6 w-12 h-12 rounded-full flex items-center justify-center border-2 font-bold text-lg shadow-sm smooth-transition z-10 node-enter
+                                        ${node.val === currentRootVal ? 'bg-amber-100 border-amber-500 text-amber-800 scale-110 ring-4 ring-amber-200' : 'bg-white border-slate-300 text-slate-700'}
+                                    `}
+                                    style={{ left: `${node.x}%`, top: `${node.y}px` }}
+                                >
+                                    {node.val}
+                                </div>
+                            ))}
+
+                            {nodes.length === 0 && <div className="absolute inset-0 flex items-center justify-center text-slate-400 italic">Tree area</div>}
+                        </div>
+                    </div>
+
+                    {/* Controls */}
+                    <div className="border-t border-slate-100 p-4 bg-white">
+                        <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+                            <div className={`flex-1 px-4 py-3 rounded-lg text-sm border-l-4 w-full sm:w-auto transition-colors bg-slate-50 border-slate-400 ${msgColor.replace('text-', 'border-').replace('600', '500')} ${msgColor}`}>
+                                {message}
+                            </div>
+
+                            <div className="flex items-center gap-2">
+                                <button onClick={() => setIsPlaying(!isPlaying)} disabled={isFinished} className={`flex items-center gap-2 px-4 py-2 rounded-lg text-white font-medium transition ${isPlaying ? 'bg-amber-500 hover:bg-amber-600' : 'bg-blue-600 hover:bg-blue-700'} disabled:opacity-50`}>
+                                    {isPlaying ? <Icons.Pause /> : <Icons.Play />}
+                                    <span className="hidden sm:inline">{isPlaying ? "暂停" : "运行"}</span>
+                                </button>
+                                <button onClick={stepForward} disabled={isPlaying || isFinished} className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 font-medium transition disabled:opacity-50">
+                                    <Icons.Step />
+                                    <span className="hidden sm:inline">单步</span>
+                                </button>
+                                <button onClick={() => loadInput()} className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition" title="重置">
+                                    <Icons.Reset />
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        );
+    };
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+</script>
+</body>
+</html>

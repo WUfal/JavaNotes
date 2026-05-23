@@ -1,0 +1,1 @@
+ALTER TABLE algorithm_problem ADD COLUMN visualization_url varchar(500);

@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>环形链表 - 算法可视化</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <style>
+        body { background-color: #f8fafc; font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; }
+        .node-transition { transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1); }
+        .pointer-transition { transition: left 0.5s cubic-bezier(0.4, 0, 0.2, 1); }
+
+        /* 脉冲动画 (相遇时) */
+        @keyframes pulse-ring {
+            0% { transform: scale(0.8); opacity: 0.8; box-shadow: 0 0 0 0 rgba(168, 85, 247, 0.7); }
+            70% { transform: scale(1.1); opacity: 1; box-shadow: 0 0 0 20px rgba(168, 85, 247, 0); }
+            100% { transform: scale(1); opacity: 1; box-shadow: 0 0 0 0 rgba(168, 85, 247, 0); }
+        }
+        .animate-meet { animation: pulse-ring 1s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+    </style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel">
+    const { useState, useEffect, useRef } = React;
+
+    // --- 图标组件 ---
+    const Icons = {
+        Play: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>,
+        Pause: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>,
+        Step: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>,
+        Reset: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 12" /><path d="M3 3v9h9" /></svg>,
+        Settings: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>,
+        Shuffle: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="16 3 21 3 21 8"></polyline><line x1="4" y1="20" x2="21" y2="3"></line><polyline points="21 16 21 21 16 21"></polyline><line x1="15" y1="15" x2="21" y2="21"></line><line x1="4" y1="4" x2="9" y2="9"></line></svg>
+    };
+
+    // --- 辅助函数 ---
+    const parseInput = (str) => {
+        return str.split(/[,，\s]+/)
+            .map(v => parseInt(v.trim()))
+            .filter(v => !isNaN(v));
+    };
+
+    const App = () => {
+        // --- 状态定义 ---
+        const [inputStr, setInputStr] = useState("3, 2, 0, -4");
+        const [posInput, setPosInput] = useState("1");
+
+        const [nodes, setNodes] = useState([3, 2, 0, -4]);
+        const [cyclePos, setCyclePos] = useState(1); // 环的入口索引，-1 表示无环
+
+        // 运行状态
+        const [isPlaying, setIsPlaying] = useState(false);
+        const [isFinished, setIsFinished] = useState(false);
+        const [message, setMessage] = useState("准备就绪");
+
+        // 指针位置
+        // 使用 null 代表指针跑出链表 (到达 null)
+        const [slow, setSlow] = useState(0);
+        const [fast, setFast] = useState(0);
+        const [stepCount, setStepCount] = useState(0);
+
+        // --- 辅助函数 ---
+        const reset = (newNodes = nodes, newPos = cyclePos) => {
+            setIsPlaying(false);
+            setIsFinished(false);
+            setMessage("状态已重置");
+            setSlow(0);
+            setFast(0);
+            setStepCount(0);
+        };
+
+        const loadInput = () => {
+            const arr = parseInput(inputStr);
+            const pos = parseInt(posInput);
+
+            if (arr.length === 0) return;
+            if (pos >= arr.length) {
+                alert("环的位置 (Pos) 不能超过数组长度");
+                return;
+            }
+
+            setNodes(arr);
+            setCyclePos(isNaN(pos) ? -1 : pos);
+            reset(arr, isNaN(pos) ? -1 : pos);
+            setMessage(`已加载链表，环入口在索引 ${pos}`);
+        };
+
+        const randomInput = () => {
+            const len = 5 + Math.floor(Math.random() * 5); // 5-9 nodes
+            const arr = Array.from({length: len}, () => Math.floor(Math.random() * 20) - 10);
+            // 80% 概率生成环
+            const hasCycle = Math.random() > 0.2;
+            const pos = hasCycle ? Math.floor(Math.random() * len) : -1;
+
+            const str = arr.join(", ");
+            setInputStr(str);
+            setPosInput(pos.toString());
+
+            setNodes(arr);
+            setCyclePos(pos);
+            reset(arr, pos);
+            setMessage(hasCycle ? `随机生成带环链表 (入口: ${pos})` : "随机生成无环链表");
+        };
+
+        // --- 自动播放逻辑 ---
+        useEffect(() => {
+            let timer;
+            if (isPlaying && !isFinished) {
+                timer = setInterval(() => {
+                    stepForward();
+                }, 1200); // 慢一点，方便看
+            }
+            return () => clearInterval(timer);
+        }, [isPlaying, isFinished, slow, fast, nodes, cyclePos]);
+
+        // --- 核心算法步骤 ---
+        const stepForward = () => {
+            if (isFinished) return;
+
+            // 1. 获取当前位置
+            // 如果指针已经出界 (null)，则保持 null
+            // 这里的逻辑稍微复杂一点：因为我们要模拟链表结构
+            // getNext(index) -> 返回下一个索引，如果有环会跳回 pos，如果无环且到尾部则返回 null
+
+            const getNext = (idx) => {
+                if (idx === null) return null;
+                if (idx < nodes.length - 1) return idx + 1;
+                // 如果是最后一个节点
+                if (cyclePos !== -1) return cyclePos; // 回到环入口
+                return null; // 无环，指向 null
+            };
+
+            const getNextSteps = (idx, steps) => {
+                let curr = idx;
+                for(let i=0; i<steps; i++) {
+                    curr = getNext(curr);
+                }
+                return curr;
+            };
+
+            const nextSlow = getNextSteps(slow, 1);
+            const nextFast = getNextSteps(fast, 2);
+
+            setSlow(nextSlow);
+            setFast(nextFast);
+            setStepCount(c => c + 1);
+
+            // 检查状态
+            if (nextFast === null || (nextFast !== null && getNext(nextFast) === null && cyclePos === -1)) {
+                // 快指针到达终点 (nextFast 是 null 或者 nextFast 的下一个是 null)
+                // 注意：如果 nextFast 已经 null，说明上一步就出去了。
+                // 我们在这里判断：如果 nextFast 为 null，说明无环
+                setIsFinished(true);
+                setIsPlaying(false);
+                setMessage("快指针到达 NULL，链表无环。");
+            } else if (nextSlow === nextFast && nextSlow !== null) {
+                // 相遇
+                setIsFinished(true);
+                setIsPlaying(false);
+                setMessage(`快慢指针在节点 [${nextSlow}] 相遇！检测到环。`);
+            } else {
+                setMessage(`Step ${stepCount + 1}: 慢指针走1步，快指针走2步。`);
+            }
+        };
+
+        // --- 渲染逻辑 ---
+
+        // 计算每个节点的坐标 (为了画线)
+        const NODE_SIZE = 50;
+        const GAP = 30;
+        // 简单布局：所有节点排成一行。如果有环，画一条曲线回去。
+        // 总宽度
+        const totalWidth = nodes.length * (NODE_SIZE + GAP);
+        const startX = 50;
+        const startY = 100;
+
+        const getNodePos = (i) => ({
+            x: startX + i * (NODE_SIZE + GAP),
+            y: startY
+        });
+
+        // 生成连线 SVG
+        const renderEdges = () => {
+            const edges = [];
+
+            // 1. 普通直线连接
+            for(let i=0; i<nodes.length - 1; i++) {
+                const p1 = getNodePos(i);
+                const p2 = getNodePos(i+1);
+                edges.push(
+                    <line key={`link-${i}`}
+                          x1={p1.x + NODE_SIZE/2} y1={p1.y}
+                          x2={p2.x - NODE_SIZE/2} y2={p2.y}
+                          stroke="#cbd5e1" strokeWidth="2" markerEnd="url(#arrowhead)"
+                    />
+                );
+            }
+
+            // 2. 尾部连接 (环或Null)
+            const tailIdx = nodes.length - 1;
+            const pTail = getNodePos(tailIdx);
+
+            if (cyclePos !== -1) {
+                // 画曲线回到 pos
+                const pTarget = getNodePos(cyclePos);
+                // 控制点：向上弯曲
+                const controlY = startY - 80 - (tailIdx - cyclePos) * 10; // 跨度越大弯得越高
+                const midX = (pTail.x + pTarget.x) / 2;
+
+                const pathData = `M ${pTail.x} ${pTail.y - NODE_SIZE/2} Q ${midX} ${controlY} ${pTarget.x} ${pTarget.y - NODE_SIZE/2}`;
+
+                edges.push(
+                    <path key="cycle-link" d={pathData} fill="none" stroke="#a855f7" strokeWidth="3" strokeDasharray="6,3" markerEnd="url(#arrowhead-cycle)" className="animate-pulse" />
+                );
+            } else {
+                // 画指向 Null 的线
+                edges.push(
+                    <line key="null-link"
+                          x1={pTail.x + NODE_SIZE/2} y1={pTail.y}
+                          x2={pTail.x + NODE_SIZE + 20} y2={pTail.y}
+                          stroke="#cbd5e1" strokeWidth="2" markerEnd="url(#arrowhead)"
+                    />
+                );
+            }
+
+            return edges;
+        };
+
+        return (
+            <div className="max-w-4xl mx-auto p-4 sm:p-6">
+                {/* 1. 顶部配置 */}
+                <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4 mb-6">
+                    <div className="flex items-center gap-2 mb-3 text-slate-700 font-bold">
+                        <Icons.Settings />
+                        <span>链表配置</span>
+                    </div>
+                    <div className="flex flex-col sm:flex-row gap-3">
+                        <div className="flex-1 space-y-1">
+                            <label className="text-xs text-slate-400 font-bold uppercase">节点值 (Values)</label>
+                            <input
+                                type="text"
+                                value={inputStr}
+                                onChange={(e) => setInputStr(e.target.value)}
+                                className="w-full border border-slate-300 rounded-lg px-3 py-2 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                                placeholder="3, 2, 0, -4"
+                            />
+                        </div>
+                        <div className="w-full sm:w-24 space-y-1">
+                            <label className="text-xs text-slate-400 font-bold uppercase">环入口 (Pos)</label>
+                            <input
+                                type="number"
+                                value={posInput}
+                                onChange={(e) => setPosInput(e.target.value)}
+                                className="w-full border border-slate-300 rounded-lg px-3 py-2 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                                placeholder="-1"
+                            />
+                        </div>
+                        <div className="flex gap-2 items-end">
+                            <button onClick={loadInput} className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition font-medium text-sm h-[38px]">
+                                加载
+                            </button>
+                            <button onClick={randomInput} className="px-3 py-2 bg-slate-100 text-slate-600 rounded-lg hover:bg-slate-200 transition h-[38px]" title="随机生成">
+                                <Icons.Shuffle />
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                {/* 2. 可视化主体 */}
+                <div className="bg-white rounded-xl shadow-lg border border-slate-200 overflow-hidden">
+                    <div className="border-b border-slate-100 bg-slate-50 p-4 flex flex-col sm:flex-row justify-between items-center gap-4">
+                        <div>
+                            <h1 className="text-xl font-bold text-slate-800">环形链表 (Linked List Cycle)</h1>
+                            <p className="text-xs text-slate-500 mt-1">快慢指针法 (Floyd's Algorithm) · O(N)</p>
+                        </div>
+                        <div className="flex gap-4 text-xs font-bold">
+                            <div className="flex items-center gap-1">
+                                <span className="w-3 h-3 rounded-full bg-green-500"></span> 慢指针 (1步)
+                            </div>
+                            <div className="flex items-center gap-1">
+                                <span className="w-3 h-3 rounded-full bg-red-500"></span> 快指针 (2步)
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="p-4 sm:p-8 bg-slate-50 min-h-[300px] overflow-x-auto relative">
+                        {/* 结果状态大字 */}
+                        {isFinished && (
+                            <div className="absolute top-4 left-1/2 -translate-x-1/2 px-6 py-2 rounded-full shadow-lg font-bold text-white z-20 animate-bounce"
+                                 style={{ backgroundColor: slow === fast && slow !== null ? '#10b981' : '#64748b' }}>
+                                {slow === fast && slow !== null ? "Cycle Detected!" : "No Cycle Found"}
+                            </div>
+                        )}
+
+                        <div className="relative min-w-[600px] h-[200px] flex items-center select-none">
+                            <svg className="absolute inset-0 w-full h-full pointer-events-none z-0">
+                                <defs>
+                                    <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+                                        <polygon points="0 0, 10 3.5, 0 7" fill="#cbd5e1" />
+                                    </marker>
+                                    <marker id="arrowhead-cycle" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+                                        <polygon points="0 0, 10 3.5, 0 7" fill="#a855f7" />
+                                    </marker>
+                                </defs>
+                                {renderEdges()}
+                            </svg>
+
+                            {nodes.map((val, idx) => {
+                                const pos = getNodePos(idx);
+                                const isSlow = idx === slow;
+                                const isFast = idx === fast;
+                                const isMeet = isFinished && isSlow && isFast && slow !== null;
+
+                                return (
+                                    <div key={idx}
+                                         className={`absolute w-12 h-12 rounded-full flex items-center justify-center border-2 font-bold text-lg bg-white z-10 transition-all duration-300
+                                            ${isMeet ? 'border-purple-500 text-purple-600 animate-meet' : 'border-slate-300 text-slate-700'}
+                                        `}
+                                         style={{
+                                             left: pos.x - 25,
+                                             top: pos.y - 25,
+                                         }}
+                                    >
+                                        {val}
+
+                                        {/* Pointers Labels */}
+                                        <div className="absolute -top-12 flex flex-col items-center gap-1 w-20 pointer-events-none">
+                                            {isSlow && (
+                                                <div className="bg-green-500 text-white text-[10px] px-1.5 rounded shadow-sm pointer-transition mb-1">
+                                                    Slow
+                                                </div>
+                                            )}
+                                            {isFast && (
+                                                <div className="bg-red-500 text-white text-[10px] px-1.5 rounded shadow-sm pointer-transition">
+                                                    Fast
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                );
+                            })}
+
+                            {/* NULL Node Visualization */}
+                            {cyclePos === -1 && (
+                                <div className="absolute w-12 h-12 rounded border-2 border-dashed border-slate-300 flex items-center justify-center text-xs font-mono text-slate-400 bg-slate-100 z-10"
+                                     style={{ left: getNodePos(nodes.length).x - 10, top: getNodePos(nodes.length).y - 25 }}>
+                                    NULL
+
+                                    {/* Pointers at NULL */}
+                                    <div className="absolute -top-12 flex flex-col items-center gap-1 w-20 pointer-events-none">
+                                        {slow === null && <div className="bg-green-500 text-white text-[10px] px-1.5 rounded shadow-sm">Slow</div>}
+                                        {fast === null && <div className="bg-red-500 text-white text-[10px] px-1.5 rounded shadow-sm">Fast</div>}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Controls */}
+                    <div className="border-t border-slate-100 p-4 bg-white">
+                        <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+                            <div className={`flex-1 px-4 py-3 rounded-lg text-sm border-l-4 w-full sm:w-auto transition-colors ${isFinished ? (slow === fast ? 'bg-purple-50 text-purple-900 border-purple-500' : 'bg-slate-100 text-slate-600 border-slate-400') : 'bg-blue-50 text-blue-800 border-blue-500'}`}>
+                                {message}
+                            </div>
+
+                            <div className="flex items-center gap-2">
+                                <button onClick={() => setIsPlaying(!isPlaying)} disabled={isFinished} className={`flex items-center gap-2 px-4 py-2 rounded-lg text-white font-medium transition ${isPlaying ? 'bg-amber-500 hover:bg-amber-600' : 'bg-purple-600 hover:bg-purple-700'} disabled:opacity-50`}>
+                                    {isPlaying ? <Icons.Pause /> : <Icons.Play />}
+                                    <span className="hidden sm:inline">{isPlaying ? "暂停" : "运行"}</span>
+                                </button>
+                                <button onClick={stepForward} disabled={isPlaying || isFinished} className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 font-medium transition disabled:opacity-50">
+                                    <Icons.Step />
+                                    <span className="hidden sm:inline">单步</span>
+                                </button>
+                                <button onClick={() => reset()} className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition" title="重置">
+                                    <Icons.Reset />
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        );
+    };
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+</script>
+</body>
+</html>

@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>搜索旋转排序数组 - 算法可视化</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <style>
+        body { background-color: #f8fafc; font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; }
+        .cell-transition { transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1); }
+        .fade-enter { animation: fadeIn 0.4s ease-out forwards; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .sorted-bg { background-image: linear-gradient(135deg, #dcfce7 25%, #ffffff 25%, #ffffff 50%, #dcfce7 50%, #dcfce7 75%, #ffffff 75%, #ffffff 100%); background-size: 20px 20px; }
+        .bar-chart-container { display: flex; align-items: flex-end; height: 160px; gap: 4px; }
+    </style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel">
+    const { useState, useEffect, useRef } = React;
+
+    // --- 图标组件 ---
+    const Icons = {
+        Play: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>,
+        Pause: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>,
+        Step: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>,
+        Reset: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 12" /><path d="M3 3v9h9" /></svg>,
+        Settings: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>,
+        Shuffle: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="16 3 21 3 21 8"></polyline><line x1="4" y1="20" x2="21" y2="3"></line><polyline points="21 16 21 21 16 21"></polyline><line x1="15" y1="15" x2="21" y2="21"></line><line x1="4" y1="4" x2="9" y2="9"></line></svg>,
+        Search: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>,
+        Target: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="12" r="6"></circle><circle cx="12" cy="12" r="2"></circle></svg>,
+        Rotate: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21.5 2v6h-6"></path><path d="M21.34 15.57a10 10 0 1 1-.57-8.38"></path></svg>
+    };
+
+    const App = () => {
+        // --- 状态定义 ---
+        const [inputStr, setInputStr] = useState("4, 5, 6, 7, 0, 1, 2");
+        const [nums, setNums] = useState([4, 5, 6, 7, 0, 1, 2]);
+        const [targetInput, setTargetInput] = useState("0");
+        const [target, setTarget] = useState(0);
+
+        // 运行状态
+        const [isPlaying, setIsPlaying] = useState(false);
+        const [isFinished, setIsFinished] = useState(false);
+        const [message, setMessage] = useState("准备就绪。数组必须是旋转排序数组。");
+
+        // 算法状态
+        const [low, setLow] = useState(0);
+        const [high, setHigh] = useState(6);
+        const [mid, setMid] = useState(-1);
+        const [foundIdx, setFoundIdx] = useState(-1);
+
+        // 动画状态
+        const [highlightRange, setHighlightRange] = useState(null); // {start, end, type: 'sorted' | 'discard'}
+
+        // --- 初始化/重置 ---
+        const parseInput = () => {
+            try {
+                const arr = inputStr.split(/[,，\s]+/).filter(v => v.trim() !== "").map(Number);
+                const t = Number(targetInput);
+                if (arr.length === 0) throw new Error("数组不能为空");
+                setNums(arr);
+                setTarget(t);
+                resetState(arr, t);
+                setMessage(`数据已加载。Target: ${t}`);
+            } catch (e) {
+                setMessage("输入错误: " + e.message);
+            }
+        };
+
+        const resetState = (arr = nums, t = target) => {
+            setIsPlaying(false);
+            setIsFinished(false);
+            setMessage("状态已重置");
+
+            setLow(0);
+            setHigh(arr.length - 1);
+            setMid(-1);
+            setFoundIdx(-1);
+            setHighlightRange(null);
+        };
+
+        const randomInput = () => {
+            // Generate sorted array then rotate
+            const len = 7 + Math.floor(Math.random() * 5); // 7-11
+            const start = Math.floor(Math.random() * 5);
+            const sorted = Array.from({length: len}, (_, i) => start + i * 2);
+            const pivot = Math.floor(Math.random() * len);
+            const rotated = [...sorted.slice(pivot), ...sorted.slice(0, pivot)];
+
+            // Pick target
+            const t = Math.random() > 0.3 ? rotated[Math.floor(Math.random() * len)] : 999;
+
+            setInputStr(rotated.join(", "));
+            setTargetInput(t.toString());
+            setNums(rotated);
+            setTarget(t);
+            resetState(rotated, t);
+            setMessage(`随机生成旋转数组。Target: ${t}`);
+        };
+
+        // --- 自动播放 ---
+        useEffect(() => {
+            let timer;
+            if (isPlaying && !isFinished) {
+                timer = setInterval(() => {
+                    stepForward();
+                }, 1500); // Slower for clarity
+            }
+            return () => clearInterval(timer);
+        }, [isPlaying, isFinished, low, high, mid, highlightRange]);
+
+        const stepForward = () => {
+            if (isFinished) return;
+
+            // Phase 1: Calculate Mid (if not set or previous loop done)
+            if (mid === -1 || highlightRange) {
+                // Reset highlights from previous step
+                if (highlightRange) {
+                    setHighlightRange(null);
+                    setMid(-1); // Ready to calc new mid
+                    return; // Wait one tick to clear visual
+                }
+
+                if (low > high) {
+                    setIsFinished(true);
+                    setIsPlaying(false);
+                    setMessage("Low > High，搜索结束。未找到目标。");
+                    return;
+                }
+
+                const newMid = Math.floor((low + high) / 2);
+                setMid(newMid);
+
+                if (nums[newMid] === target) {
+                    setFoundIdx(newMid);
+                    setIsFinished(true);
+                    setIsPlaying(false);
+                    setMessage(`🎉 找到目标！Index: ${newMid}，Value: ${nums[newMid]}`);
+                    return;
+                }
+
+                setMessage(`计算 Mid = ${newMid} (Value: ${nums[newMid]})。\n判断哪一半是有序的？\n比较 nums[Low] (${nums[low]}) 和 nums[Mid] (${nums[newMid]})`);
+                return;
+            }
+
+            // Phase 2: Check Sorted Half & Decide
+            // Current State: low, high, mid are set. We need to decide movement.
+            const midVal = nums[mid];
+            const lowVal = nums[low];
+            const highVal = nums[high];
+
+            if (lowVal <= midVal) {
+                // Left half is sorted
+                setMessage(`nums[Low] <= nums[Mid]，说明左半部分 [${low}, ${mid}] 是有序的。`);
+
+                // Check if target is in range
+                if (target >= lowVal && target < midVal) {
+                    // Target in left
+                    setHighlightRange({start: low, end: mid, type: 'target_in'}); // Visual helper
+                    setTimeout(() => {
+                        if (!isPlaying && !isFinished) return; // Basic guard
+                        setHigh(mid - 1);
+                        setMessage(`Target (${target}) 在有序区间 [${lowVal}, ${midVal}) 内。\n👉 向左查找: High 移至 ${mid - 1}。`);
+                    }, 500); // Delay logic slightly for visual
+                } else {
+                    // Target in right
+                    setHighlightRange({start: low, end: mid, type: 'target_out'});
+                    setTimeout(() => {
+                        if (!isPlaying && !isFinished) return;
+                        setLow(mid + 1);
+                        setMessage(`Target (${target}) 不在有序区间 [${lowVal}, ${midVal}) 内。\n👉 向右查找: Low 移至 ${mid + 1}。`);
+                    }, 500);
+                }
+            } else {
+                // Right half is sorted
+                setMessage(`nums[Low] > nums[Mid]，说明右半部分 [${mid}, ${high}] 是有序的。`);
+
+                if (target > midVal && target <= highVal) {
+                    // Target in right
+                    setHighlightRange({start: mid, end: high, type: 'target_in'});
+                    setTimeout(() => {
+                        if (!isPlaying && !isFinished) return;
+                        setLow(mid + 1);
+                        setMessage(`Target (${target}) 在有序区间 (${midVal}, ${highVal}] 内。\n👉 向右查找: Low 移至 ${mid + 1}。`);
+                    }, 500);
+                } else {
+                    // Target in left
+                    setHighlightRange({start: mid, end: high, type: 'target_out'});
+                    setTimeout(() => {
+                        if (!isPlaying && !isFinished) return;
+                        setHigh(mid - 1);
+                        setMessage(`Target (${target}) 不在有序区间 (${midVal}, ${highVal}] 内。\n👉 向左查找: High 移至 ${mid - 1}。`);
+                    }, 500);
+                }
+            }
+
+            // We set highlightRange to non-null, so next step will clear it
+        };
+
+        // --- 渲染辅助 ---
+        const maxVal = Math.max(...nums, 1);
+
+        const getBarClass = (idx) => {
+            let base = "flex-1 flex flex-col justify-end items-center relative group ";
+            let color = "bg-slate-300";
+
+            // Gray out eliminated parts
+            if (idx < low || idx > high) {
+                color = "bg-slate-100 opacity-50";
+            } else {
+                // Active range colors
+                if (idx === mid) color = "bg-blue-500";
+                else if (idx === low) color = "bg-green-400";
+                else if (idx === high) color = "bg-orange-400";
+                else color = "bg-slate-400";
+            }
+
+            // Found
+            if (idx === foundIdx) color = "bg-green-600";
+
+            // Highlight Range Overlay Logic
+            let extra = "";
+            if (highlightRange) {
+                if (idx >= highlightRange.start && idx <= highlightRange.end) {
+                    if (highlightRange.type === 'target_in') extra = "ring-2 ring-green-500 z-10 sorted-bg";
+                    else extra = "opacity-40"; // Dim the sorted part if target NOT in it? Or dim others?
+                    // Let's use sorted-bg pattern for sorted part detection visualization
+                    if (highlightRange.type.includes('target')) {
+                        // This range is the sorted one we checked
+                        extra += " sorted-bg border-b-4 border-slate-500";
+                    }
+                }
+            }
+
+            return { className: base, barColor: color + " " + extra };
+        };
+
+        return (
+            <div className="max-w-4xl mx-auto p-6">
+                {/* 1. 配置区 */}
+                <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4 mb-6">
+                    <div className="flex items-center gap-2 mb-3 text-slate-700 font-bold">
+                        <Icons.Settings />
+                        <span>数据配置</span>
+                    </div>
+                    <div className="flex flex-col sm:flex-row gap-3">
+                        <div className="flex-1">
+                            <label className="text-xs text-slate-400 font-bold ml-1 mb-1 block">旋转数组</label>
+                            <input
+                                type="text"
+                                value={inputStr}
+                                onChange={(e) => setInputStr(e.target.value)}
+                                className="w-full border border-slate-300 rounded-lg px-3 py-2 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            />
+                        </div>
+                        <div className="w-24">
+                            <label className="text-xs text-slate-400 font-bold ml-1 mb-1 block">目标值</label>
+                            <input
+                                type="number"
+                                value={targetInput}
+                                onChange={(e) => setTargetInput(e.target.value)}
+                                className="w-full border border-slate-300 rounded-lg px-3 py-2 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            />
+                        </div>
+                        <div className="flex items-end gap-2">
+                            <button onClick={parseInput} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-medium text-sm h-[42px]">
+                                加载
+                            </button>
+                            <button onClick={randomInput} className="px-3 py-2 bg-slate-100 text-slate-600 rounded-lg hover:bg-slate-200 transition h-[42px]" title="随机">
+                                <Icons.Shuffle />
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                {/* 2. 主区域 */}
+                <div className="bg-white rounded-xl shadow-lg border border-slate-200 overflow-hidden">
+                    {/* Header */}
+                    <div className="border-b border-slate-100 bg-slate-50 p-4 flex flex-col sm:flex-row justify-between items-center gap-4">
+                        <div>
+                            <h1 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+                                <Icons.Rotate /> 搜索旋转排序数组
+                            </h1>
+                            <p className="text-xs text-slate-500 mt-1">二分查找变体：先判断哪一半有序，再判断 Target 是否在其中。</p>
+                        </div>
+                        <div className="bg-blue-50 px-3 py-1 rounded text-blue-700 font-mono font-bold border border-blue-200">
+                            Target: {target}
+                        </div>
+                    </div>
+
+                    {/* Visualization Canvas */}
+                    <div className="p-8 bg-slate-50 min-h-[400px] flex flex-col relative">
+
+                        {/* Pointers Legend */}
+                        <div className="flex justify-center gap-6 mb-8 text-xs font-bold">
+                            <div className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-green-400"></span> L (Low)</div>
+                            <div className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-blue-500"></span> M (Mid)</div>
+                            <div className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-orange-400"></span> H (High)</div>
+                        </div>
+
+                        {/* Chart Area */}
+                        <div className="flex-1 flex items-end justify-center gap-1 sm:gap-2 h-64 relative mt-4 px-4 bar-chart-container">
+                            {nums.map((val, i) => {
+                                const { className, barColor } = getBarClass(i);
+                                const heightPct = Math.max((val / maxVal) * 100, 10);
+
+                                return (
+                                    <div key={i} className={className}>
+                                        {/* Value Tooltip/Label */}
+                                        <span className={`text-xs font-bold mb-1 ${i === mid ? 'text-blue-600 scale-110' : 'text-slate-500'}`}>
+                                                {val}
+                                            </span>
+
+                                        {/* Bar */}
+                                        <div
+                                            className={`w-full max-w-[40px] rounded-t-sm shadow-sm transition-all duration-300 ${barColor}`}
+                                            style={{ height: `${heightPct}%` }}
+                                        ></div>
+
+                                        {/* Index & Markers */}
+                                        <div className="absolute -bottom-6 flex flex-col items-center">
+                                            <span className="text-[10px] text-slate-300 font-mono">{i}</span>
+                                            <div className="flex gap-0.5 mt-1">
+                                                {i === low && <span className="text-[10px] font-bold text-green-500">L</span>}
+                                                {i === mid && <span className="text-[10px] font-bold text-blue-500">M</span>}
+                                                {i === high && <span className="text-[10px] font-bold text-orange-500">H</span>}
+                                            </div>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+
+                    </div>
+
+                    {/* Controls & Explanation */}
+                    <div className="border-t border-slate-100 p-4 bg-white">
+                        <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+                            <div className="flex-1 bg-blue-50 text-blue-800 px-4 py-3 rounded-lg text-sm border-l-4 border-blue-500 w-full sm:w-auto shadow-sm whitespace-pre-line transition-all">
+                                {message}
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <button onClick={() => setIsPlaying(!isPlaying)} disabled={isFinished} className={`flex items-center gap-2 px-4 py-2 rounded-lg text-white font-medium transition ${isPlaying ? 'bg-red-500 hover:bg-red-600' : 'bg-blue-600 hover:bg-blue-700'} disabled:opacity-50`}>
+                                    {isPlaying ? <Icons.Pause /> : <Icons.Play />}
+                                    <span className="hidden sm:inline">{isPlaying ? "暂停" : "自动"}</span>
+                                </button>
+                                <button onClick={stepForward} disabled={isPlaying || isFinished} className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 font-medium transition disabled:opacity-50">
+                                    <Icons.Step />
+                                    <span className="hidden sm:inline">单步</span>
+                                </button>
+                                <button onClick={() => resetState()} className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition">
+                                    <Icons.Reset />
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        );
+    };
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+</script>
+</body>
+</html>

@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>零钱兑换 - 算法可视化</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <style>
+        body { background-color: #f8fafc; font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; }
+        .cell-transition { transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+        .coin-drop { animation: dropIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; }
+        @keyframes dropIn { from { opacity: 0; transform: translateY(-20px) scale(0.8); } to { opacity: 1; transform: translateY(0) scale(1); } }
+        /* 简单的闪烁动画用于高亮比较 */
+        .highlight-pulse { animation: pulseBorder 1s infinite; }
+        @keyframes pulseBorder { 0% { border-color: #3b82f6; box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.7); } 70% { border-color: #3b82f6; box-shadow: 0 0 0 6px rgba(59, 130, 246, 0); } 100% { border-color: #3b82f6; box-shadow: 0 0 0 0 rgba(59, 130, 246, 0); } }
+    </style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel">
+    const { useState, useEffect, useRef } = React;
+
+    // --- 图标组件 ---
+    const Icons = {
+        Play: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>,
+        Pause: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>,
+        Step: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>,
+        Reset: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 12" /><path d="M3 3v9h9" /></svg>,
+        Settings: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>,
+        Shuffle: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="16 3 21 3 21 8"></polyline><line x1="4" y1="20" x2="21" y2="3"></line><polyline points="21 16 21 21 16 21"></polyline><line x1="15" y1="15" x2="21" y2="21"></line><line x1="4" y1="4" x2="9" y2="9"></line></svg>,
+        Coins: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="8" cy="8" r="6"></circle><path d="M18.09 10.37A6 6 0 1 1 10.34 18"></path><path d="M7 6h1v4"></path><path d="M16.71 13.88c.07.3.06.61 0 .92"></path></svg>,
+        Zap: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>,
+        Table: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="3" y1="15" x2="21" y2="15"></line><line x1="9" y1="3" x2="9" y2="21"></line><line x1="15" y1="3" x2="15" y2="21"></line></svg>
+    };
+
+    // --- 辅助：计算最优解 ---
+    const calcOptimal = (target, pool) => {
+        const dp = new Array(target + 1).fill(Infinity);
+        dp[0] = 0;
+        for (let i = 1; i <= target; i++) {
+            for (let coin of pool) {
+                if (i >= coin) {
+                    dp[i] = Math.min(dp[i], dp[i - coin] + 1);
+                }
+            }
+        }
+        return dp[target];
+    };
+
+    const App = () => {
+        // --- 状态定义 ---
+        const [coinsInput, setCoinsInput] = useState("1, 2, 5");
+        const [amountInput, setAmountInput] = useState("11");
+
+        const [coins, setCoins] = useState([1, 2, 5]);
+        const [amount, setAmount] = useState(11);
+
+        // 运行状态
+        const [mode, setMode] = useState("dp"); // 'dp' | 'greedy'
+        const [isPlaying, setIsPlaying] = useState(false);
+        const [isFinished, setIsFinished] = useState(false);
+        const [message, setMessage] = useState("准备就绪");
+
+        // DP 状态
+        const [dp, setDp] = useState([]); // dp table
+        const [dpIdx, setDpIdx] = useState(0); // 当前计算的 amount index
+        const [coinIdx, setCoinIdx] = useState(0); // 当前尝试的 coin index
+        const [prevIdx, setPrevIdx] = useState(null); // 回看的 index (i - coin)
+
+        // Greedy 状态
+        const [currentAmount, setCurrentAmount] = useState(0);
+        const [selectedCoins, setSelectedCoins] = useState([]); // Array of coins picked
+        const [greedyStep, setGreedyStep] = useState(0); // animation step
+
+        // --- 初始化/重置 ---
+        const parseInput = () => {
+            try {
+                const c = coinsInput.split(/[,，\s]+/).filter(v=>v).map(Number).sort((a,b)=>a-b);
+                const a = parseInt(amountInput);
+                if (c.length === 0) throw new Error("硬币数组不能为空");
+                if (isNaN(a) || a < 0) throw new Error("金额必须是非负整数");
+                if (a > 30) throw new Error("为了演示效果，金额建议 <= 30");
+
+                setCoins(c);
+                setAmount(a);
+                resetState(c, a);
+                setMessage(`数据已加载。Coins: [${c.join(", ")}], Amount: ${a}`);
+            } catch (e) {
+                setMessage("输入错误: " + e.message);
+            }
+        };
+
+        const resetState = (c = coins, a = amount) => {
+            setIsPlaying(false);
+            setIsFinished(false);
+            setMessage("状态已重置");
+
+            // DP Init
+            const initDp = new Array(a + 1).fill(Infinity);
+            initDp[0] = 0;
+            setDp(initDp);
+            setDpIdx(1);
+            setCoinIdx(0);
+            setPrevIdx(null);
+
+            // Greedy Init
+            setCurrentAmount(a);
+            setSelectedCoins([]);
+            setGreedyStep(0);
+        };
+
+        const randomInput = () => {
+            const c = [1, Math.floor(Math.random() * 3) + 2, Math.floor(Math.random() * 4) + 4].sort((a,b)=>a-b);
+            // Ensure unique
+            const uniqueC = [...new Set(c)];
+            const a = Math.floor(Math.random() * 15) + 5; // 5-20
+
+            setCoinsInput(uniqueC.join(", "));
+            setAmountInput(a.toString());
+            setCoins(uniqueC);
+            setAmount(a);
+            resetState(uniqueC, a);
+            setMessage("已生成随机数据。");
+        };
+
+        const loadTrapCase = () => {
+            const c = [1, 3, 4];
+            const a = 6;
+            setCoinsInput("1, 3, 4");
+            setAmountInput("6");
+            setCoins(c);
+            setAmount(a);
+            resetState(c, a);
+            setMessage("已加载经典反例：Coins=[1,3,4], Amount=6。\n贪心选 4+1+1 (3枚)，DP选 3+3 (2枚)。");
+        };
+
+        // --- 自动播放 ---
+        useEffect(() => {
+            let timer;
+            if (isPlaying && !isFinished) {
+                timer = setInterval(() => {
+                    stepForward();
+                }, mode === 'dp' ? 400 : 800); // DP needs to be faster
+            }
+            return () => clearInterval(timer);
+        }, [isPlaying, isFinished, mode, dpIdx, coinIdx, greedyStep]);
+
+        const stepForward = () => {
+            if (isFinished) return;
+            if (mode === 'dp') {
+                stepDP();
+            } else {
+                stepGreedy();
+            }
+        };
+
+        // 1. DP Logic O(S*n)
+        const stepDP = () => {
+            if (dpIdx > amount) {
+                setIsFinished(true);
+                setIsPlaying(false);
+                const res = dp[amount];
+                setMessage(`计算完成！凑成 ${amount} 的最少硬币数是 ${res === Infinity ? -1 : res}。`);
+                setPrevIdx(null);
+                return;
+            }
+
+            const coin = coins[coinIdx];
+
+            // If this coin is too big for current amount i
+            if (coin > dpIdx) {
+                // Move to next amount, reset coin loop
+                setDpIdx(dpIdx + 1);
+                setCoinIdx(0);
+                setPrevIdx(null);
+                return;
+            }
+
+            // Logic: dp[i] = min(dp[i], dp[i-coin] + 1)
+            const prevIndex = dpIdx - coin;
+            setPrevIdx(prevIndex);
+
+            const currentVal = dp[dpIdx];
+            const candidateVal = dp[prevIndex] === Infinity ? Infinity : dp[prevIndex] + 1;
+
+            let msg = `计算 dp[${dpIdx}]: 尝试硬币 ${coin}。`;
+            msg += ` 对比: dp[${prevIndex}](${dp[prevIndex]}) + 1 = ${candidateVal} vs 当前(${currentVal === Infinity ? '∞' : currentVal})`;
+
+            if (candidateVal < currentVal) {
+                const newDp = [...dp];
+                newDp[dpIdx] = candidateVal;
+                setDp(newDp);
+                msg += ` ➔ 更新为 ${candidateVal}`;
+            } else {
+                msg += ` ➔ 不更新`;
+            }
+            setMessage(msg);
+
+            // Next sub-step
+            if (coinIdx < coins.length - 1) {
+                setCoinIdx(coinIdx + 1);
+            } else {
+                setDpIdx(dpIdx + 1);
+                setCoinIdx(0);
+            }
+        };
+
+        // 2. Greedy Logic
+        const stepGreedy = () => {
+            if (currentAmount === 0) {
+                setIsFinished(true);
+                setIsPlaying(false);
+
+                // 🌟 结束时对比最优解
+                const optimal = calcOptimal(amount, coins);
+                const myCount = selectedCoins.length;
+
+                let resultMsg = `贪心结束。共使用 ${myCount} 枚硬币。`;
+                if (myCount > optimal) {
+                    resultMsg += `\n❌ 这是一个非最优解！(DP最优解需要 ${optimal} 枚)`;
+                } else {
+                    resultMsg += `\n✅ 运气不错，这是一个最优解。`;
+                }
+                setMessage(resultMsg);
+                return;
+            }
+
+            // Find largest coin <= currentAmount
+            // Sort descending for easy pick
+            const sortedCoins = [...coins].sort((a,b) => b-a);
+            const coin = sortedCoins.find(c => c <= currentAmount);
+
+            if (coin === undefined) {
+                setIsFinished(true);
+                setIsPlaying(false);
+                setMessage(`无法凑出剩余金额 ${currentAmount}。贪心失败 (或无解)。`);
+                return;
+            }
+
+            setSelectedCoins(prev => [...prev, coin]);
+            const left = currentAmount - coin;
+            setCurrentAmount(left);
+            setGreedyStep(s => s + 1); // 🌟 关键修复：更新步数以触发 useEffect 刷新闭包
+            setMessage(`当前剩余 ${currentAmount}。最大可选硬币是 ${coin}。选它！\n剩余 -> ${left}。`);
+        };
+
+        // --- 渲染辅助 ---
+        const getDpCellStyle = (index) => {
+            let base = "w-10 h-12 flex flex-col items-center justify-center border rounded relative transition-all duration-200 ";
+
+            if (index === dpIdx && !isFinished) {
+                return base + "bg-blue-100 border-blue-500 scale-110 shadow-lg z-10 font-bold text-blue-700";
+            }
+            if (index === prevIdx && !isFinished) {
+                return base + "bg-yellow-50 border-yellow-400 text-yellow-700 highlight-pulse";
+            }
+            if (isFinished && index === amount) {
+                return base + "bg-green-100 border-green-600 text-green-800 font-bold";
+            }
+
+            return base + "bg-white border-slate-200 text-slate-500";
+        };
+
+        return (
+            <div className="max-w-4xl mx-auto p-6">
+                {/* 1. 配置区 */}
+                <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4 mb-6">
+                    <div className="flex items-center gap-2 mb-3 text-slate-700 font-bold">
+                        <Icons.Settings />
+                        <span>数据配置</span>
+                    </div>
+                    <div className="flex flex-col sm:flex-row gap-3">
+                        <div className="flex-1">
+                            <label className="text-xs text-slate-400 font-bold ml-1 mb-1 block">硬币面额 (Coins)</label>
+                            <input
+                                type="text"
+                                value={coinsInput}
+                                onChange={(e) => setCoinsInput(e.target.value)}
+                                className="w-full border border-slate-300 rounded-lg px-3 py-2 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                placeholder="1, 2, 5"
+                            />
+                        </div>
+                        <div className="w-24">
+                            <label className="text-xs text-slate-400 font-bold ml-1 mb-1 block">总金额</label>
+                            <input
+                                type="number"
+                                value={amountInput}
+                                onChange={(e) => setAmountInput(e.target.value)}
+                                className="w-full border border-slate-300 rounded-lg px-3 py-2 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                placeholder="11"
+                            />
+                        </div>
+                        <div className="flex items-end gap-2">
+                            <button onClick={parseInput} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-medium text-sm h-[42px]">
+                                应用
+                            </button>
+                            <button onClick={randomInput} className="px-3 py-2 bg-slate-100 text-slate-600 rounded-lg hover:bg-slate-200 transition h-[42px]" title="随机">
+                                <Icons.Shuffle />
+                            </button>
+                        </div>
+                    </div>
+                    {/* 快捷加载反例 */}
+                    <div className="mt-3 pt-3 border-t border-slate-100">
+                        <button onClick={loadTrapCase} className="text-xs text-orange-500 hover:text-orange-600 underline flex items-center gap-1">
+                            💡 加载贪心反例 (Coins=[1,3,4], Amount=6)
+                        </button>
+                    </div>
+                </div>
+
+                {/* 2. 主区域 */}
+                <div className="bg-white rounded-xl shadow-lg border border-slate-200 overflow-hidden">
+                    {/* Header */}
+                    <div className="border-b border-slate-100 bg-slate-50 p-4 flex flex-col sm:flex-row justify-between items-center gap-4">
+                        <div>
+                            <h1 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+                                <Icons.Coins /> 零钱兑换 (Coin Change)
+                            </h1>
+                            <p className="text-xs text-slate-500 mt-1">凑成总金额所需的最少硬币个数。</p>
+                        </div>
+                        <div className="flex bg-slate-200 p-1 rounded-lg">
+                            <button
+                                onClick={() => { setMode('dp'); resetState(); }}
+                                className={`px-3 py-1.5 text-sm rounded-md transition-all font-medium flex items-center gap-1 ${mode === 'dp' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                            >
+                                <Icons.Table /> 动态规划 (Optimal)
+                            </button>
+                            <button
+                                onClick={() => { setMode('greedy'); resetState(); }}
+                                className={`px-3 py-1.5 text-sm rounded-md transition-all font-medium flex items-center gap-1 ${mode === 'greedy' ? 'bg-white text-orange-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                            >
+                                <Icons.Zap /> 贪心法 (May Fail)
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Visualization Canvas */}
+                    <div className="p-8 bg-slate-50 min-h-[300px] flex flex-col gap-8">
+
+                        {/* Coins Display */}
+                        <div className="flex justify-center gap-3">
+                            {coins.map(c => (
+                                <div key={c} className="w-10 h-10 rounded-full border-2 border-yellow-400 bg-yellow-100 text-yellow-700 flex items-center justify-center font-bold shadow-sm">
+                                    {c}
+                                </div>
+                            ))}
+                        </div>
+
+                        {/* Mode Specific Views */}
+                        {mode === 'dp' ? (
+                            <div className="space-y-2">
+                                <div className="flex items-center justify-between text-xs text-slate-400 uppercase font-bold tracking-wider mb-2">
+                                    <span>DP Table (Index = Amount)</span>
+                                    <span>Value = Min Coins</span>
+                                </div>
+                                <div className="flex flex-wrap gap-1 justify-center">
+                                    {dp.map((val, i) => (
+                                        <div key={i} className={getDpCellStyle(i)}>
+                                            <span className="text-[10px] text-slate-300 absolute top-0.5 left-1 font-mono">{i}</span>
+                                            <span className="text-sm font-bold">
+                                                    {val === Infinity ? '∞' : val}
+                                                </span>
+                                        </div>
+                                    ))}
+                                </div>
+                                <div className="text-center mt-4">
+                                    {/* Prev Pointer Arrow (Visual only logic complex, skipped for simplicity, used colors instead) */}
+                                </div>
+                            </div>
+                        ) : (
+                            // Greedy View
+                            <div className="flex flex-col items-center">
+                                <div className="text-4xl font-black text-slate-700 mb-2">
+                                    {currentAmount}
+                                </div>
+                                <div className="text-xs text-slate-400 uppercase tracking-widest mb-8">剩余金额</div>
+
+                                <div className="flex flex-wrap gap-2 min-h-[60px] p-4 bg-slate-100 rounded-xl w-full justify-center items-center border-dashed border-2 border-slate-300">
+                                    {selectedCoins.length === 0 ? <span className="text-slate-400 text-sm">暂无硬币...</span> :
+                                        selectedCoins.map((c, i) => (
+                                            <div key={i} className="w-12 h-12 rounded-full border-2 border-yellow-500 bg-yellow-400 text-white flex items-center justify-center font-bold shadow-md coin-drop">
+                                                {c}
+                                            </div>
+                                        ))
+                                    }
+                                </div>
+                                <div className="mt-2 text-sm text-slate-500 font-mono">Count: {selectedCoins.length}</div>
+                            </div>
+                        )}
+
+                    </div>
+
+                    {/* Controls */}
+                    <div className="border-t border-slate-100 p-4 bg-white">
+                        <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+                            <div className="flex-1 bg-blue-50 text-blue-800 px-4 py-3 rounded-lg text-sm border-l-4 border-blue-500 w-full sm:w-auto whitespace-pre-line shadow-sm">
+                                {message}
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <button onClick={() => setIsPlaying(!isPlaying)} disabled={isFinished} className={`flex items-center gap-2 px-4 py-2 rounded-lg text-white font-medium transition ${isPlaying ? 'bg-red-500 hover:bg-red-600' : 'bg-blue-600 hover:bg-blue-700'} disabled:opacity-50`}>
+                                    {isPlaying ? <Icons.Pause /> : <Icons.Play />}
+                                    <span className="hidden sm:inline">{isPlaying ? "暂停" : "自动"}</span>
+                                </button>
+                                <button onClick={stepForward} disabled={isPlaying || isFinished} className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 font-medium transition disabled:opacity-50">
+                                    <Icons.Step />
+                                    <span className="hidden sm:inline">单步</span>
+                                </button>
+                                <button onClick={() => resetState()} className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition">
+                                    <Icons.Reset />
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        );
+    };
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+</script>
+</body>
+</html>

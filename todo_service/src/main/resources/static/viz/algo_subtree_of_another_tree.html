@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>另一棵树的子树 - 算法可视化</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <style>
+        body { background-color: #f8fafc; font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; }
+        .node-transition { transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1); }
+        .fade-enter { animation: fadeIn 0.4s ease-out forwards; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .pulse-match { animation: pulseGreen 1.5s infinite; }
+        .pulse-check { animation: pulseBlue 1.5s infinite; }
+        @keyframes pulseGreen { 0% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.7); } 70% { box-shadow: 0 0 0 10px rgba(34, 197, 94, 0); } 100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); } }
+        @keyframes pulseBlue { 0% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.7); } 70% { box-shadow: 0 0 0 10px rgba(59, 130, 246, 0); } 100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0); } }
+    </style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel">
+    const { useState, useEffect, useRef, useMemo } = React;
+
+    // --- 图标组件 ---
+    const Icons = {
+        Play: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>,
+        Pause: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>,
+        Step: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>,
+        Reset: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 12" /><path d="M3 3v9h9" /></svg>,
+        Settings: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>,
+        Shuffle: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="16 3 21 3 21 8"></polyline><line x1="4" y1="20" x2="21" y2="3"></line><polyline points="21 16 21 21 16 21"></polyline><line x1="15" y1="15" x2="21" y2="21"></line><line x1="4" y1="4" x2="9" y2="9"></line></svg>,
+        Search: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>,
+        Check: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>,
+        GitBranch: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="6" y1="3" x2="6" y2="15"></line><circle cx="18" cy="6" r="3"></circle><circle cx="6" cy="18" r="3"></circle><path d="M18 9a9 9 0 0 1-9 9"></path></svg>
+    };
+
+    // --- 树节点类 ---
+    class TreeNode {
+        constructor(val, left = null, right = null) {
+            this.val = val;
+            this.left = left;
+            this.right = right;
+            this.id = Math.random().toString(36).substr(2, 9);
+        }
+    }
+
+    const App = () => {
+        // --- 状态定义 ---
+        const [rootStr, setRootStr] = useState("[3,4,5,1,2]");
+        const [subStr, setSubStr] = useState("[4,1,2]");
+
+        const [rootTree, setRootTree] = useState(null);
+        const [subTree, setSubTree] = useState(null);
+
+        // 运行状态
+        const [isPlaying, setIsPlaying] = useState(false);
+        const [isFinished, setIsFinished] = useState(false);
+        const [message, setMessage] = useState("准备就绪");
+        const [result, setResult] = useState(null); // true | false
+
+        // 算法状态
+        const [mainStack, setMainStack] = useState([]); // 主树遍历栈
+        const [currMainNode, setCurrMainNode] = useState(null); // 主树当前遍历节点
+        const [isComparing, setIsComparing] = useState(false); // 是否处于 IsSameTree 判定模式
+        const [compareStack, setCompareStack] = useState([]); // 比对栈 [{u, v}]
+        const [compareHighlight, setCompareHighlight] = useState(null); // 当前比对的高亮对 {uId, vId, status: 'match'|'fail'}
+
+        // 布局数据
+        const [rootLayout, setRootLayout] = useState([]);
+        const [subLayout, setSubLayout] = useState([]);
+        const [rootViewBox, setRootViewBox] = useState("0 0 400 300");
+        const [subViewBox, setSubViewBox] = useState("0 0 400 300");
+
+        // --- 树构建与布局 ---
+        const buildTree = (arr) => {
+            if (!arr || arr.length === 0) return null;
+            const root = new TreeNode(arr[0]);
+            const queue = [root];
+            let i = 1;
+            while (i < arr.length) {
+                const curr = queue.shift();
+                if (arr[i] !== null) {
+                    curr.left = new TreeNode(arr[i]);
+                    queue.push(curr.left);
+                }
+                i++;
+                if (i < arr.length && arr[i] !== null) {
+                    curr.right = new TreeNode(arr[i]);
+                    queue.push(curr.right);
+                }
+                i++;
+            }
+            return root;
+        };
+
+        const calculateLayout = (root, width = 400, height = 300) => {
+            const nodes = [];
+            const assignCoords = (n, x, y, offset) => {
+                if (!n) return;
+                n.x = x;
+                n.y = y;
+                nodes.push(n);
+                assignCoords(n.left, x - offset, y + 60, offset / 2);
+                assignCoords(n.right, x + offset, y + 60, offset / 2);
+            };
+            assignCoords(root, width/2, 40, width/3);
+
+            // Calc bounds
+            if (nodes.length > 0) {
+                let minX=Infinity, maxX=-Infinity, minY=Infinity, maxY=-Infinity;
+                nodes.forEach(n => {
+                    minX=Math.min(minX, n.x); maxX=Math.max(maxX, n.x);
+                    minY=Math.min(minY, n.y); maxY=Math.max(maxY, n.y);
+                });
+                const p = 40;
+                return { nodes, viewBox: `${minX-p} ${minY-p} ${Math.max(maxX-minX+p*2, width)} ${Math.max(maxY-minY+p*2, height)}` };
+            }
+            return { nodes: [], viewBox: `0 0 ${width} ${height}` };
+        };
+
+        const parseInput = () => {
+            try {
+                const arr1 = JSON.parse(rootStr);
+                const arr2 = JSON.parse(subStr);
+                if (!Array.isArray(arr1) || !Array.isArray(arr2)) throw new Error("输入必须是数组");
+
+                const r = buildTree(arr1);
+                const s = buildTree(arr2);
+
+                setRootTree(r);
+                setSubTree(s);
+
+                const l1 = calculateLayout(r, 400, 300);
+                const l2 = calculateLayout(s, 300, 200);
+                setRootLayout(l1.nodes);
+                setRootViewBox(l1.viewBox);
+                setSubLayout(l2.nodes);
+                setSubViewBox(l2.viewBox);
+
+                resetState(r, s);
+                setMessage("树已构建。点击开始。");
+            } catch (e) {
+                setMessage("输入错误: " + e.message);
+            }
+        };
+
+        const resetState = (r = rootTree, s = subTree) => {
+            setIsPlaying(false);
+            setIsFinished(false);
+            setResult(null);
+            setMessage("状态已重置");
+
+            // Init Main Traversal (using Stack for DFS Pre-order)
+            if (r) {
+                setMainStack([r]);
+            } else {
+                setMainStack([]);
+            }
+            setCurrMainNode(null);
+
+            // Compare State
+            setIsComparing(false);
+            setCompareStack([]);
+            setCompareHighlight(null);
+        };
+
+        const randomInput = () => {
+            // Generate a random main tree, then pick a subtree or modify slightly
+            const size = 10;
+            const arr = [];
+            for(let i=0; i<size; i++) arr.push(i > 0 && Math.random() > 0.8 ? null : Math.floor(Math.random() * 10));
+
+            const root = buildTree(arr);
+            // Serialize
+            const q = [root];
+            const res = [];
+            while(q.length) {
+                const n = q.shift();
+                if(n) { res.push(n.val); q.push(n.left); q.push(n.right); }
+                else res.push(null);
+            }
+            while(res.length && res[res.length-1]===null) res.pop();
+            setRootStr(JSON.stringify(res));
+
+            // Generate sub
+            // 50% chance to be actual subtree
+            const isSub = Math.random() > 0.5;
+            if (isSub && root && root.left) {
+                // Use left child as base
+                const q2 = [root.left];
+                const res2 = [];
+                while(q2.length) {
+                    const n = q2.shift();
+                    if(n) { res2.push(n.val); q2.push(n.left); q2.push(n.right); }
+                    else res2.push(null);
+                }
+                while(res2.length && res2[res2.length-1]===null) res2.pop();
+                setSubStr(JSON.stringify(res2));
+            } else {
+                setSubStr("[9,9,9]"); // likely fail
+            }
+
+            // Auto trigger load? No, let user click Load to see values
+            setMessage("随机参数已填入，请点击【加载】。");
+        };
+
+        // --- 自动播放 ---
+        useEffect(() => {
+            let timer;
+            if (isPlaying && !isFinished) {
+                timer = setInterval(() => {
+                    stepForward();
+                }, isComparing ? 800 : 1000);
+            }
+            return () => clearInterval(timer);
+        }, [isPlaying, isFinished, isComparing, mainStack, compareStack, currMainNode]);
+
+        const stepForward = () => {
+            if (isFinished) return;
+
+            // --- 模式 1: 判定阶段 (Checking isSameTree) ---
+            if (isComparing) {
+                if (compareStack.length === 0) {
+                    // Compare Stack Empty => Means all checks passed for this subtree
+                    setIsFinished(true);
+                    setIsPlaying(false);
+                    setResult(true);
+                    setCompareHighlight(null);
+                    setMessage(`🎉 匹配成功！子树结构与值完全一致。`);
+                    return;
+                }
+
+                const newCompStack = [...compareStack];
+                const { u, v } = newCompStack.pop(); // Pop top
+
+                // Highlight current check
+                setCompareHighlight({
+                    uId: u ? u.id : null,
+                    vId: v ? v.id : null,
+                    status: 'checking'
+                });
+
+                // Logic
+                if (!u && !v) {
+                    setMessage("节点均为 NULL，匹配 ✅。继续检查栈中剩余节点。");
+                    setCompareStack(newCompStack);
+                } else if (!u || !v || u.val !== v.val) {
+                    // Mismatch!
+                    // Highlight fail
+                    const uVal = u ? u.val : "NULL";
+                    const vVal = v ? v.val : "NULL";
+                    setMessage(`❌ 匹配失败: ${uVal} vs ${vVal}。退出比对，继续遍历主树。`);
+
+                    // Fail current comparison, go back to traversal
+                    setIsComparing(false);
+                    setCompareHighlight(null);
+                    // Note: mainStack stays as is, we just resume popping from it next tick
+                } else {
+                    // Match! Push children
+                    setMessage(`✅ 节点值 ${u.val} 匹配。压入左右子节点继续比对。`);
+                    newCompStack.push({ u: u.left, v: subTree.left }); // Wait, subtree structure needs to be traversed relative to V
+                    // BUG FIX: v is the node in subTree. So push v.left/right
+                    // wait, previous logic pushed root.
+                    // Let's correct push logic:
+                    // We popped u (from main) and v (from sub).
+                    // Push (u.right, v.right) and (u.left, v.left)
+                    newCompStack.push({ u: u.right, v: v.right });
+                    newCompStack.push({ u: u.left, v: v.left });
+                    setCompareStack(newCompStack);
+                }
+                return;
+            }
+
+            // --- 模式 2: 搜索阶段 (Traversing Main Tree) ---
+            if (mainStack.length === 0) {
+                setIsFinished(true);
+                setIsPlaying(false);
+                setResult(false);
+                setMessage("遍历结束，未找到匹配的子树。");
+                return;
+            }
+
+            const newMainStack = [...mainStack];
+            const node = newMainStack.pop();
+            setCurrMainNode(node);
+            setMainStack(newMainStack);
+
+            // Add children to stack for traversal (DFS)
+            if (node.right) newMainStack.push(node.right);
+            if (node.left) newMainStack.push(node.left);
+            setMainStack(newMainStack); // Update stack for next step
+
+            // Check candidacy
+            if (node.val === subTree.val) {
+                setMessage(`🔍 发现节点 ${node.val} 与子树根节点值相同。开始结构比对...`);
+                setIsComparing(true);
+                setCompareStack([{ u: node, v: subTree }]);
+            } else {
+                setMessage(`遍历主树: 节点 ${node.val} (不等于 ${subTree.val})。继续...`);
+            }
+        };
+
+        // --- 渲染辅助 ---
+        const getNodeStyle = (node, isSubTree) => {
+            let fill = "white";
+            let stroke = "#94a3b8"; // slate-400
+            let strokeWidth = "2";
+            let scale = "1";
+
+            if (isSubTree) {
+                // Rendering Sub Tree visual
+                // Check if involved in comparison
+                if (isComparing && compareHighlight) {
+                    if (compareHighlight.vId === node.id) {
+                        stroke = "#3b82f6"; // blue
+                        fill = "#eff6ff";
+                        strokeWidth = "3";
+                        scale = "1.1";
+                    }
+                }
+            } else {
+                // Rendering Main Tree visual
+                const isCurr = currMainNode && currMainNode.id === node.id;
+                const isCompU = isComparing && compareHighlight && compareHighlight.uId === node.id;
+
+                if (result === true && isComparing && compareHighlight === null) {
+                    // Success state (rough approx: highlight processed nodes? Hard to track exact subset without extra state)
+                    // Just highlight current as green
+                    if (isCurr) { fill = "#dcfce7"; stroke = "#22c55e"; }
+                }
+                else if (isCompU) {
+                    stroke = "#3b82f6"; // blue matching
+                    fill = "#eff6ff";
+                    strokeWidth = "3";
+                    scale = "1.1";
+                }
+                else if (isCurr) {
+                    stroke = "#f59e0b"; // amber searching
+                    fill = "#fef3c7";
+                    strokeWidth = "3";
+                }
+            }
+
+            return { fill, stroke, strokeWidth, scale };
+        };
+
+        return (
+            <div className="max-w-6xl mx-auto p-6">
+                {/* 1. 配置区 */}
+                <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4 mb-6">
+                    <div className="flex items-center gap-2 mb-3 text-slate-700 font-bold">
+                        <Icons.Settings />
+                        <span>数据配置</span>
+                    </div>
+                    <div className="flex flex-col sm:flex-row gap-4 items-end">
+                        <div className="flex-1 w-full">
+                            <label className="text-xs text-slate-400 font-bold ml-1 mb-1 block">主树 (Root Tree)</label>
+                            <input
+                                type="text"
+                                value={rootStr}
+                                onChange={(e) => setRootStr(e.target.value)}
+                                className="w-full border border-slate-300 rounded-lg px-3 py-2 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            />
+                        </div>
+                        <div className="flex-1 w-full">
+                            <label className="text-xs text-slate-400 font-bold ml-1 mb-1 block">子树 (Sub Tree)</label>
+                            <input
+                                type="text"
+                                value={subStr}
+                                onChange={(e) => setSubStr(e.target.value)}
+                                className="w-full border border-slate-300 rounded-lg px-3 py-2 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            />
+                        </div>
+                        <div className="flex gap-2">
+                            <button onClick={parseInput} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-medium text-sm h-[42px]">加载</button>
+                            <button onClick={randomInput} className="px-3 py-2 bg-slate-100 text-slate-600 rounded-lg hover:bg-slate-200 transition h-[42px]" title="随机"><Icons.Shuffle /></button>
+                        </div>
+                    </div>
+                </div>
+
+                {/* 2. 主区域 */}
+                <div className="bg-white rounded-xl shadow-lg border border-slate-200 overflow-hidden">
+                    {/* Header */}
+                    <div className="border-b border-slate-100 bg-slate-50 p-4 flex flex-col sm:flex-row justify-between items-center gap-4">
+                        <div>
+                            <h1 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+                                <Icons.GitBranch /> 另一棵树的子树 (Subtree of Another Tree)
+                            </h1>
+                            <p className="text-xs text-slate-500 mt-1">遍历主树，找到相同值的节点后，进行同步结构比对。</p>
+                        </div>
+
+                        {result !== null && (
+                            <div className={`px-4 py-1 rounded-full text-sm font-bold border ${result ? 'bg-green-100 text-green-700 border-green-300' : 'bg-red-100 text-red-700 border-red-300'}`}>
+                                Result: {result ? "TRUE" : "FALSE"}
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Visualization Canvas */}
+                    <div className="flex flex-col lg:flex-row h-[500px]">
+
+                        {/* Left: Main Tree */}
+                        <div className="flex-1 bg-slate-50 relative overflow-hidden border-r border-slate-100">
+                            <div className="absolute top-2 left-2 text-xs font-bold text-slate-400 bg-white/80 px-2 py-1 rounded">MAIN TREE</div>
+                            <svg className="w-full h-full" viewBox={rootViewBox} preserveAspectRatio="xMidYMid meet">
+                                {rootLayout.map(node => (
+                                    <g key={'l-' + node.id}>
+                                        {node.left && <line x1={node.x} y1={node.y} x2={node.left.x} y2={node.left.y} stroke="#cbd5e1" strokeWidth="2" />}
+                                        {node.right && <line x1={node.x} y1={node.y} x2={node.right.x} y2={node.right.y} stroke="#cbd5e1" strokeWidth="2" />}
+                                    </g>
+                                ))}
+                                {rootLayout.map(node => {
+                                    const style = getNodeStyle(node, false);
+                                    return (
+                                        <g key={node.id} className="node-transition" style={{transformOrigin: `${node.x}px ${node.y}px`, transform: `scale(${style.scale})`}}>
+                                            <circle cx={node.x} cy={node.y} r="18" fill={style.fill} stroke={style.stroke} strokeWidth={style.strokeWidth} />
+                                            <text x={node.x} y={node.y} dy="0.35em" textAnchor="middle" className="text-xs font-bold pointer-events-none text-slate-700">{node.val}</text>
+                                        </g>
+                                    );
+                                })}
+                            </svg>
+                        </div>
+
+                        {/* Right: Sub Tree */}
+                        <div className="w-full lg:w-1/3 bg-white border-l border-slate-100 flex flex-col relative">
+                            <div className="absolute top-2 left-2 text-xs font-bold text-slate-400 bg-white/80 px-2 py-1 rounded border z-10">SUB TREE</div>
+                            <svg className="w-full h-full bg-white" viewBox={subViewBox} preserveAspectRatio="xMidYMid meet">
+                                {subLayout.map(node => (
+                                    <g key={'l-' + node.id}>
+                                        {node.left && <line x1={node.x} y1={node.y} x2={node.left.x} y2={node.left.y} stroke="#cbd5e1" strokeWidth="2" />}
+                                        {node.right && <line x1={node.x} y1={node.y} x2={node.right.x} y2={node.right.y} stroke="#cbd5e1" strokeWidth="2" />}
+                                    </g>
+                                ))}
+                                {subLayout.map(node => {
+                                    const style = getNodeStyle(node, true);
+                                    return (
+                                        <g key={node.id} className="node-transition" style={{transformOrigin: `${node.x}px ${node.y}px`, transform: `scale(${style.scale})`}}>
+                                            <circle cx={node.x} cy={node.y} r="18" fill={style.fill} stroke={style.stroke} strokeWidth={style.strokeWidth} />
+                                            <text x={node.x} y={node.y} dy="0.35em" textAnchor="middle" className="text-xs font-bold pointer-events-none text-slate-700">{node.val}</text>
+                                        </g>
+                                    );
+                                })}
+                            </svg>
+                        </div>
+                    </div>
+
+                    {/* Controls */}
+                    <div className="border-t border-slate-100 p-4 bg-white">
+                        <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+                            <div className="flex-1 bg-blue-50 text-blue-800 px-4 py-3 rounded-lg text-sm border-l-4 border-blue-500 w-full sm:w-auto shadow-sm transition-all flex items-center gap-2">
+                                {isComparing ? <div className="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></div> : null}
+                                {message}
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <button onClick={() => setIsPlaying(!isPlaying)} disabled={isFinished} className={`flex items-center gap-2 px-4 py-2 rounded-lg text-white font-medium transition ${isPlaying ? 'bg-red-500 hover:bg-red-600' : 'bg-blue-600 hover:bg-blue-700'} disabled:opacity-50`}>{isPlaying ? <Icons.Pause /> : <Icons.Play />} <span className="hidden sm:inline">{isPlaying ? "暂停" : "自动"}</span></button>
+                                <button onClick={stepForward} disabled={isPlaying || isFinished} className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 font-medium transition disabled:opacity-50"><Icons.Step /><span className="hidden sm:inline">单步</span></button>
+                                <button onClick={() => resetState()} className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition"><Icons.Reset /></button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        );
+    };
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+</script>
+</body>
+</html>

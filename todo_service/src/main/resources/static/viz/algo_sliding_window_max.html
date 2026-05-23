@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>滑动窗口最大值 - 算法可视化</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <style>
+        body { background-color: #f8fafc; font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; }
+        .cell-transition { transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1); }
+        .fade-enter { animation: fadeIn 0.4s ease-out forwards; }
+        .fade-exit { animation: fadeOut 0.3s ease-out forwards; }
+        @keyframes fadeIn { from { opacity: 0; transform: scale(0.8); } to { opacity: 1; transform: scale(1); } }
+        @keyframes fadeOut { from { opacity: 1; transform: scale(1); } to { opacity: 0; transform: scale(0.8); } }
+        /* 队列容器样式 */
+        .deque-container { min-height: 60px; display: flex; align-items: center; gap: 8px; padding: 8px; border-radius: 8px; background: #fff7ed; border: 1px dashed #fdba74; overflow-x: auto; }
+    </style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel">
+    const { useState, useEffect, useRef } = React;
+
+    // --- 图标组件 ---
+    const Icons = {
+        Play: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>,
+        Pause: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>,
+        Step: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>,
+        Reset: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 12" /><path d="M3 3v9h9" /></svg>,
+        Settings: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>,
+        Shuffle: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="16 3 21 3 21 8"></polyline><line x1="4" y1="20" x2="21" y2="3"></line><polyline points="21 16 21 21 16 21"></polyline><line x1="15" y1="15" x2="21" y2="21"></line><line x1="4" y1="4" x2="9" y2="9"></line></svg>,
+        Layers: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline></svg>,
+        Window: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="9" y1="3" x2="9" y2="21"></line></svg>
+    };
+
+    const App = () => {
+        // --- 状态定义 ---
+        const [inputStr, setInputStr] = useState("1,3,-1,-3,5,3,6,7");
+        const [kInput, setKInput] = useState(3);
+        const [nums, setNums] = useState([1,3,-1,-3,5,3,6,7]);
+        const [k, setK] = useState(3);
+
+        // 运行状态
+        const [mode, setMode] = useState("deque"); // 'brute' | 'deque'
+        const [isPlaying, setIsPlaying] = useState(false);
+        const [isFinished, setIsFinished] = useState(false);
+        const [message, setMessage] = useState("准备就绪");
+
+        // 结果状态
+        const [result, setResult] = useState([]);
+
+        // 暴力法状态
+        const [bruteLeft, setBruteLeft] = useState(0); // 窗口左边界
+        const [bruteMaxIdx, setBruteMaxIdx] = useState(-1); // 当前找到的最大值索引
+
+        // 单调队列状态
+        const [deque, setDeque] = useState([]); // 存储索引
+        const [currIdx, setCurrIdx] = useState(0); // 当前遍历到的 nums 索引
+        const [dequePhase, setDequePhase] = useState('INIT'); // INIT, CLEAN_TAIL, PUSH, CLEAN_HEAD, RECORD
+
+        // --- 初始化/重置 ---
+        const parseInput = () => {
+            try {
+                const arr = inputStr.split(/[,，\s]+/).filter(v => v.trim() !== "").map(Number);
+                const kVal = parseInt(kInput);
+                if (arr.length === 0) throw new Error("数组不能为空");
+                if (isNaN(kVal) || kVal < 1) throw new Error("K 必须 > 0");
+                if (kVal > arr.length) throw new Error("K 不能大于数组长度");
+
+                setNums(arr);
+                setK(kVal);
+                resetState(arr, kVal);
+                setMessage(`已加载数据。N=${arr.length}, K=${kVal}。`);
+            } catch (e) {
+                setMessage("输入错误: " + e.message);
+            }
+        };
+
+        const resetState = (arr = nums, kVal = k) => {
+            setIsPlaying(false);
+            setIsFinished(false);
+            setMessage("状态已重置");
+            setResult([]);
+
+            // Brute
+            setBruteLeft(0);
+            setBruteMaxIdx(-1);
+
+            // Deque
+            setDeque([]);
+            setCurrIdx(0);
+            setDequePhase('INIT');
+        };
+
+        const randomInput = () => {
+            const len = 8 + Math.floor(Math.random() * 5); // 8-12
+            const arr = Array.from({length: len}, () => Math.floor(Math.random() * 20) - 5); // -5 to 14
+            const kVal = 3 + Math.floor(Math.random() * 2); // 3-4
+            setInputStr(arr.join(","));
+            setKInput(kVal);
+            setNums(arr);
+            setK(kVal);
+            resetState(arr, kVal);
+            setMessage(`随机生成: N=${len}, K=${kVal}`);
+        };
+
+        // --- 自动播放 ---
+        useEffect(() => {
+            let timer;
+            if (isPlaying && !isFinished) {
+                timer = setInterval(() => {
+                    stepForward();
+                }, mode === 'deque' ? 1000 : 800);
+            }
+            return () => clearInterval(timer);
+        }, [isPlaying, isFinished, mode, bruteLeft, dequePhase, currIdx, deque]);
+
+        const stepForward = () => {
+            if (isFinished) return;
+            if (mode === 'brute') {
+                stepBrute();
+            } else {
+                stepDeque();
+            }
+        };
+
+        // 1. 暴力法 O(NK)
+        const stepBrute = () => {
+            if (bruteLeft > nums.length - k) {
+                setIsFinished(true);
+                setIsPlaying(false);
+                setMessage("遍历结束！");
+                return;
+            }
+
+            // 找到当前窗口 [bruteLeft, bruteLeft + k - 1] 的最大值
+            let maxVal = -Infinity;
+            let maxIdx = -1;
+            for (let i = bruteLeft; i < bruteLeft + k; i++) {
+                if (nums[i] >= maxVal) {
+                    maxVal = nums[i];
+                    maxIdx = i;
+                }
+            }
+
+            setBruteMaxIdx(maxIdx);
+            setResult(prev => [...prev, maxVal]);
+            setMessage(`窗口 [${bruteLeft}, ${bruteLeft + k - 1}] 的最大值是 ${maxVal}。加入结果。`);
+
+            setBruteLeft(bruteLeft + 1);
+        };
+
+        // 2. 单调队列 O(N)
+        const stepDeque = () => {
+            let myDeque = [...deque];
+            let i = currIdx;
+
+            if (i >= nums.length && dequePhase === 'INIT') {
+                setIsFinished(true);
+                setIsPlaying(false);
+                setMessage("遍历结束！");
+                return;
+            }
+
+            if (dequePhase === 'INIT') {
+                setDequePhase('CLEAN_TAIL');
+                setMessage(`处理索引 ${i} (值: ${nums[i]})：准备维护队列单调性...`);
+                return;
+            }
+
+            if (dequePhase === 'CLEAN_TAIL') {
+                // 如果队列不空，且队尾元素小于当前元素，弹出队尾
+                if (myDeque.length > 0 && nums[myDeque[myDeque.length - 1]] < nums[i]) {
+                    const popped = myDeque.pop();
+                    setDeque(myDeque);
+                    setMessage(`队尾 ${nums[popped]} < 当前 ${nums[i]}，破坏单调性，弹出队尾！`);
+                    // 保持状态，继续检查新的队尾
+                } else {
+                    // 队尾已经清理完毕，或者队列为空
+                    setDequePhase('PUSH');
+                    // setMessage("队尾清理完毕（或为空）。准备入队。");
+                }
+            }
+            else if (dequePhase === 'PUSH') {
+                myDeque.push(i);
+                setDeque(myDeque);
+                setMessage(`将索引 ${i} (值: ${nums[i]}) 入队。`);
+                setDequePhase('CLEAN_HEAD');
+            }
+            else if (dequePhase === 'CLEAN_HEAD') {
+                // 检查队头是否滑出窗口
+                // 窗口范围是 [i - k + 1, i]
+                // 如果队头索引 < i - k + 1，则过期
+                const windowStart = i - k + 1;
+                if (myDeque.length > 0 && myDeque[0] < windowStart) {
+                    const popped = myDeque.shift();
+                    setDeque(myDeque);
+                    setMessage(`队头索引 ${popped} 已滑出窗口 [${windowStart}, ${i}]，弹出！`);
+                } else {
+                    setDequePhase('RECORD');
+                }
+            }
+            else if (dequePhase === 'RECORD') {
+                // 记录结果：只要窗口形成 (i >= k - 1)
+                if (i >= k - 1) {
+                    const maxIdx = myDeque[0];
+                    const maxVal = nums[maxIdx];
+                    setResult(prev => [...prev, maxVal]);
+                    setMessage(`窗口 [${i-k+1}, ${i}] 形成。队头 ${maxVal} 是最大值，加入结果。`);
+                } else {
+                    setMessage(`窗口未完全形成 (需要 ${k} 个)，继续。`);
+                }
+                // 准备下一个索引
+                setCurrIdx(i + 1);
+                setDequePhase('INIT');
+            }
+        };
+
+        // --- 渲染辅助 ---
+        const getCellClass = (index) => {
+            let base = "w-12 h-12 flex flex-col items-center justify-center border rounded font-bold relative cell-transition z-10 ";
+            let bg = "bg-white border-slate-300 text-slate-700";
+
+            // 窗口范围判断
+            let isInWindow = false;
+            if (mode === 'brute') {
+                if (index >= bruteLeft && index < bruteLeft + k && !isFinished) isInWindow = true;
+            } else {
+                // Deque mode window: [currIdx - k + 1, currIdx] (approx logic for vis)
+                // We render window based on currIdx which is the *end* of the window being processed
+                // But during phases, currIdx is the one being added.
+                // Let's visualize the "potential" window.
+                if (index > currIdx - k && index <= currIdx && !isFinished) isInWindow = true;
+            }
+
+            if (isInWindow) {
+                bg = "bg-blue-50 border-blue-400 text-blue-900";
+            }
+
+            // 高亮特定元素
+            if (mode === 'brute') {
+                // 上一轮找到的最大值
+                if (index === bruteMaxIdx && isFinished) bg = "bg-green-100 border-green-500 text-green-700";
+            } else {
+                // Deque mode
+                if (index === currIdx && !isFinished) bg = "bg-purple-100 border-purple-500 text-purple-700 scale-110 shadow-md"; // Current processing
+                // 如果在队列中
+                if (deque.includes(index)) {
+                    bg = "bg-green-100 border-green-500 text-green-700"; // In deque
+                    if (index === deque[0]) bg = "bg-green-500 border-green-600 text-white shadow-lg"; // Max (Head)
+                }
+            }
+
+            return base + bg;
+        };
+
+        return (
+            <div className="max-w-4xl mx-auto p-6">
+                {/* 1. 配置区 */}
+                <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4 mb-6">
+                    <div className="flex items-center gap-2 mb-3 text-slate-700 font-bold">
+                        <Icons.Settings />
+                        <span>数据配置</span>
+                    </div>
+                    <div className="flex flex-col sm:flex-row gap-3">
+                        <div className="flex-1">
+                            <label className="text-xs text-slate-400 font-bold ml-1 mb-1 block">数组 (Nums)</label>
+                            <input
+                                type="text"
+                                value={inputStr}
+                                onChange={(e) => setInputStr(e.target.value)}
+                                className="w-full border border-slate-300 rounded-lg px-3 py-2 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            />
+                        </div>
+                        <div className="w-24">
+                            <label className="text-xs text-slate-400 font-bold ml-1 mb-1 block">窗口 (K)</label>
+                            <input
+                                type="number"
+                                min="1"
+                                value={kInput}
+                                onChange={(e) => setKInput(e.target.value)}
+                                className="w-full border border-slate-300 rounded-lg px-3 py-2 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            />
+                        </div>
+                        <div className="flex items-end gap-2">
+                            <button onClick={parseInput} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-medium text-sm h-[42px]">
+                                加载
+                            </button>
+                            <button onClick={randomInput} className="px-3 py-2 bg-slate-100 text-slate-600 rounded-lg hover:bg-slate-200 transition h-[42px]" title="随机生成">
+                                <Icons.Shuffle />
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                {/* 2. 主区域 */}
+                <div className="bg-white rounded-xl shadow-lg border border-slate-200 overflow-hidden">
+                    {/* Header */}
+                    <div className="border-b border-slate-100 bg-slate-50 p-4 flex flex-col sm:flex-row justify-between items-center gap-4">
+                        <div>
+                            <h1 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+                                <Icons.Window /> 滑动窗口最大值
+                            </h1>
+                            <p className="text-xs text-slate-500 mt-1">找出所有长度为 K 的连续子数组中的最大值。</p>
+                        </div>
+                        <div className="flex bg-slate-200 p-1 rounded-lg">
+                            <button
+                                onClick={() => { setMode('deque'); resetState(); }}
+                                className={`px-3 py-1.5 text-sm rounded-md transition-all font-medium ${mode === 'deque' ? 'bg-white text-green-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                            >
+                                单调队列 O(N)
+                            </button>
+                            <button
+                                onClick={() => { setMode('brute'); resetState(); }}
+                                className={`px-3 py-1.5 text-sm rounded-md transition-all font-medium ${mode === 'brute' ? 'bg-white text-orange-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                            >
+                                暴力法 O(NK)
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Visualization Canvas */}
+                    <div className="p-8 bg-slate-50 min-h-[350px] flex flex-col gap-8">
+
+                        {/* Array View */}
+                        <div className="flex flex-col items-center">
+                            <div className="text-xs font-bold text-slate-400 mb-2 tracking-widest">INPUT ARRAY</div>
+                            <div className="flex flex-wrap justify-center gap-2 relative">
+
+                                {/* Window Highlight Box (Overlay) */}
+                                {!isFinished && (
+                                    <div
+                                        className="absolute border-2 border-dashed border-blue-400 rounded-lg pointer-events-none transition-all duration-300 z-0 bg-blue-50/50"
+                                        style={{
+                                            height: '64px', // slightly larger than cell
+                                            top: '-4px',
+                                            left: mode === 'brute'
+                                                ? `calc(${bruteLeft * 56}px - 4px)` // 48(w) + 8(gap) = 56
+                                                : `calc(${Math.max(0, currIdx - k + 1) * 56}px - 4px)`,
+                                            width: `calc(${k * 56}px - 8px)`
+                                        }}
+                                    >
+                                        <div className="absolute -top-5 left-2 text-[10px] text-blue-500 font-bold bg-white px-1 rounded">Window</div>
+                                    </div>
+                                )}
+
+                                {nums.map((num, idx) => (
+                                    <div key={idx} className="flex flex-col items-center gap-1">
+                                        <div className={getCellClass(idx)}>
+                                            {num}
+                                        </div>
+                                        <span className="text-[10px] text-slate-300 font-mono">{idx}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Deque Visualization (Only in Deque Mode) */}
+                        {mode === 'deque' && (
+                            <div className="flex flex-col items-center animate-in fade-in zoom-in duration-300">
+                                <div className="flex items-center gap-2 mb-2">
+                                        <span className="text-xs font-bold text-slate-500 flex items-center gap-1">
+                                            <Icons.Layers /> 单调队列 (Deque)
+                                        </span>
+                                    <span className="text-[10px] text-slate-400 bg-slate-100 px-2 py-0.5 rounded">存储下标，值递减</span>
+                                </div>
+
+                                <div className="deque-container">
+                                    <span className="text-[10px] text-orange-400 font-bold mr-1">Head</span>
+                                    {deque.length === 0 ? <span className="text-sm text-slate-300 italic px-4">Empty</span> :
+                                        deque.map((idx, i) => (
+                                            <div key={idx} className="flex flex-col items-center bg-white border border-orange-200 rounded px-3 py-1 min-w-[40px] shadow-sm fade-enter">
+                                                <span className="text-xs font-bold text-slate-400">Idx: {idx}</span>
+                                                <span className="text-lg font-bold text-orange-600">{nums[idx]}</span>
+                                            </div>
+                                        ))
+                                    }
+                                    <span className="text-[10px] text-orange-400 font-bold ml-1">Tail</span>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Result Array */}
+                        <div className="flex flex-col items-center mt-4">
+                            <div className="text-xs font-bold text-slate-400 mb-2 tracking-widest">RESULT</div>
+                            <div className="flex flex-wrap gap-2 min-h-[40px]">
+                                {result.map((res, i) => (
+                                    <div key={i} className="w-10 h-10 flex items-center justify-center bg-green-50 border border-green-200 text-green-700 font-bold rounded shadow-sm fade-enter">
+                                        {res}
+                                    </div>
+                                ))}
+                                {result.length === 0 && <span className="text-sm text-slate-300 italic">Waiting...</span>}
+                            </div>
+                        </div>
+
+                    </div>
+
+                    {/* Controls */}
+                    <div className="border-t border-slate-100 p-4 bg-white">
+                        <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+                            <div className="flex-1 bg-blue-50 text-blue-800 px-4 py-3 rounded-lg text-sm border-l-4 border-blue-500 w-full sm:w-auto whitespace-pre-line shadow-sm">
+                                {message}
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <button onClick={() => setIsPlaying(!isPlaying)} disabled={isFinished} className={`flex items-center gap-2 px-4 py-2 rounded-lg text-white font-medium transition ${isPlaying ? 'bg-red-500 hover:bg-red-600' : 'bg-blue-600 hover:bg-blue-700'} disabled:opacity-50`}>
+                                    {isPlaying ? <Icons.Pause /> : <Icons.Play />}
+                                    <span className="hidden sm:inline">{isPlaying ? "暂停" : "自动"}</span>
+                                </button>
+                                <button onClick={stepForward} disabled={isPlaying || isFinished} className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 font-medium transition disabled:opacity-50">
+                                    <Icons.Step />
+                                    <span className="hidden sm:inline">单步</span>
+                                </button>
+                                <button onClick={() => resetState()} className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition">
+                                    <Icons.Reset />
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        );
+    };
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+</script>
+</body>
+</html>

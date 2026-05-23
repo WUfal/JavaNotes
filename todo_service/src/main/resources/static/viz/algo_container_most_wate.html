@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>盛最多水的容器 - 算法可视化</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <style>
+        body { background-color: #f8fafc; font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; }
+        .bar-transition { transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1); }
+        .water-fill { animation: fillUp 0.5s ease-out forwards; transform-origin: bottom; }
+        @keyframes fillUp { from { transform: scaleY(0); } to { transform: scaleY(1); } }
+        .fade-enter { animation: fadeIn 0.4s ease-out forwards; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+    </style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel">
+    const { useState, useEffect, useRef } = React;
+
+    // --- 图标组件 ---
+    const Icons = {
+        Play: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>,
+        Pause: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>,
+        Step: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>,
+        Reset: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 12" /><path d="M3 3v9h9" /></svg>,
+        Settings: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>,
+        Shuffle: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="16 3 21 3 21 8"></polyline><line x1="4" y1="20" x2="21" y2="3"></line><polyline points="21 16 21 21 16 21"></polyline><line x1="15" y1="15" x2="21" y2="21"></line><line x1="4" y1="4" x2="9" y2="9"></line></svg>,
+        Move: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="5 9 2 12 5 15"></polyline><polyline points="9 5 12 2 15 5"></polyline><polyline points="19 9 22 12 19 15"></polyline><polyline points="15 19 12 22 9 19"></polyline><line x1="2" y1="12" x2="22" y2="12"></line><line x1="12" y1="2" x2="12" y2="22"></line></svg>,
+        Droplet: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2.69l5.74 5.88a6 6 0 0 1-8.48 8.48A6 6 0 0 1 5.56 9.28L12 2.69Z"></path></svg>,
+        Search: ({size=18}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>,
+        ArrowUp: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="19" x2="12" y2="5"></line><polyline points="5 12 12 5 19 12"></polyline></svg>
+    };
+
+    const App = () => {
+        // --- 状态定义 ---
+        const [inputStr, setInputStr] = useState("1,8,6,2,5,4,8,3,7");
+        const [heights, setHeights] = useState([1,8,6,2,5,4,8,3,7]);
+
+        // 运行状态
+        const [mode, setMode] = useState("twoPointer"); // 'brute' | 'twoPointer'
+        const [isPlaying, setIsPlaying] = useState(false);
+        const [isFinished, setIsFinished] = useState(false);
+        const [message, setMessage] = useState("准备就绪");
+
+        // 算法状态
+        const [left, setLeft] = useState(0);
+        const [right, setRight] = useState(8);
+        const [maxArea, setMaxArea] = useState(0);
+        const [bestPair, setBestPair] = useState(null); // {l, r}
+
+        // 暴力法额外状态
+        const [bruteI, setBruteI] = useState(0);
+        const [bruteJ, setBruteJ] = useState(1);
+
+        // --- 初始化/重置 ---
+        const parseInput = () => {
+            try {
+                const arr = inputStr.split(/[,，\s]+/).filter(v => v.trim() !== "").map(Number);
+                if (arr.length < 2) throw new Error("数组长度至少为 2");
+                setHeights(arr);
+                resetState(arr);
+                setMessage(`数据已加载。共 ${arr.length} 个高度。`);
+            } catch (e) {
+                setMessage("输入错误: " + e.message);
+            }
+        };
+
+        const resetState = (arr = heights) => {
+            setIsPlaying(false);
+            setIsFinished(false);
+            setMessage("状态已重置");
+            setMaxArea(0);
+            setBestPair(null);
+
+            // Two Pointer Reset
+            setLeft(0);
+            setRight(arr.length - 1);
+
+            // Brute Reset
+            setBruteI(0);
+            setBruteJ(1);
+        };
+
+        const randomInput = () => {
+            const len = 8 + Math.floor(Math.random() * 5); // 8-12
+            const arr = Array.from({length: len}, () => Math.floor(Math.random() * 10) + 1);
+            setInputStr(arr.join(", "));
+            setHeights(arr);
+            resetState(arr);
+            setMessage("已生成随机高度数据。");
+        };
+
+        // --- 自动播放 ---
+        useEffect(() => {
+            let timer;
+            if (isPlaying && !isFinished) {
+                timer = setInterval(() => {
+                    stepForward();
+                }, 1000);
+            }
+            return () => clearInterval(timer);
+        }, [isPlaying, isFinished, mode, left, right, bruteI, bruteJ]);
+
+        const stepForward = () => {
+            if (isFinished) return;
+            if (mode === 'twoPointer') stepTwoPointer();
+            else stepBrute();
+        };
+
+        // 1. 双指针法 O(N)
+        const stepTwoPointer = () => {
+            if (left >= right) {
+                setIsFinished(true);
+                setIsPlaying(false);
+                setMessage(`搜索结束。最大面积: ${maxArea}`);
+                return;
+            }
+
+            const hLeft = heights[left];
+            const hRight = heights[right];
+            const h = Math.min(hLeft, hRight);
+            const w = right - left;
+            const area = h * w;
+
+            let msg = `当前容器: [${left}, ${right}]。高度 min(${hLeft}, ${hRight}) = ${h}，宽度 ${w}。面积 = ${area}。`;
+            let newMax = maxArea;
+            let newBestPair = bestPair;
+
+            if (area > maxArea) {
+                newMax = area;
+                newBestPair = {l: left, r: right};
+                msg += ` 📈 发现新最大值！`;
+            } else {
+                msg += ` (未超过 ${maxArea})`;
+            }
+            setMaxArea(newMax);
+            setBestPair(newBestPair);
+
+            // Decide movement
+            // 为了最大化面积，我们希望保留较高的线，移动较矮的线
+            if (hLeft < hRight) {
+                setMessage(msg + `\n左边 (${hLeft}) 较矮，向右移动试图寻找更高边界。`);
+                setLeft(left + 1);
+            } else {
+                setMessage(msg + `\n右边 (${hRight}) 较矮(或相等)，向左移动试图寻找更高边界。`);
+                setRight(right - 1);
+            }
+        };
+
+        // 2. 暴力法 O(N^2)
+        const stepBrute = () => {
+            let i = bruteI;
+            let j = bruteJ;
+
+            if (i >= heights.length - 1) {
+                setIsFinished(true);
+                setIsPlaying(false);
+                setMessage(`遍历结束。最大面积: ${maxArea}`);
+                return;
+            }
+
+            const h = Math.min(heights[i], heights[j]);
+            const w = j - i;
+            const area = h * w;
+
+            let newMax = maxArea;
+            let newBestPair = bestPair;
+            let msg = `检查组合 [${i}, ${j}]。面积 = ${h} × ${w} = ${area}。`;
+
+            if (area > maxArea) {
+                newMax = area;
+                newBestPair = {l: i, r: j};
+                msg += ` 📈 更新最大值！`;
+            }
+            setMaxArea(newMax);
+            setBestPair(newBestPair);
+            setMessage(msg);
+
+            // Move indices
+            if (j < heights.length - 1) {
+                setBruteJ(j + 1);
+            } else {
+                setBruteI(i + 1);
+                setBruteJ(i + 2);
+            }
+        };
+
+        // --- 渲染辅助 ---
+        // Calculate max height for scaling bars visually (e.g. max height is 100%)
+        const maxH = Math.max(...heights, 1);
+
+        return (
+            <div className="max-w-4xl mx-auto p-6">
+                {/* 1. 配置区 */}
+                <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4 mb-6">
+                    <div className="flex items-center gap-2 mb-3 text-slate-700 font-bold">
+                        <Icons.Settings />
+                        <span>数据配置</span>
+                    </div>
+                    <div className="flex flex-col sm:flex-row gap-3">
+                        <div className="flex-1">
+                            <label className="text-xs text-slate-400 font-bold ml-1 mb-1 block">高度数组</label>
+                            <input
+                                type="text"
+                                value={inputStr}
+                                onChange={(e) => setInputStr(e.target.value)}
+                                className="w-full border border-slate-300 rounded-lg px-3 py-2 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            />
+                        </div>
+                        <div className="flex items-end gap-2">
+                            <button onClick={parseInput} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-medium text-sm h-[42px]">
+                                加载
+                            </button>
+                            <button onClick={randomInput} className="px-3 py-2 bg-slate-100 text-slate-600 rounded-lg hover:bg-slate-200 transition h-[42px]" title="随机">
+                                <Icons.Shuffle />
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                {/* 2. 主区域 */}
+                <div className="bg-white rounded-xl shadow-lg border border-slate-200 overflow-hidden">
+                    {/* Header */}
+                    <div className="border-b border-slate-100 bg-slate-50 p-4 flex flex-col sm:flex-row justify-between items-center gap-4">
+                        <div>
+                            <h1 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+                                <Icons.Droplet /> 盛最多水的容器
+                            </h1>
+                            <p className="text-xs text-slate-500 mt-1">寻找两条线，使得它们与 x 轴构成的容器容积最大。</p>
+                        </div>
+                        <div className="flex bg-slate-200 p-1 rounded-lg">
+                            <button
+                                onClick={() => { setMode('twoPointer'); resetState(); }}
+                                className={`px-3 py-1.5 text-sm rounded-md transition-all font-medium flex items-center gap-1 ${mode === 'twoPointer' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                            >
+                                <Icons.Move size={14}/> 双指针法 O(N)
+                            </button>
+                            <button
+                                onClick={() => { setMode('brute'); resetState(); }}
+                                className={`px-3 py-1.5 text-sm rounded-md transition-all font-medium flex items-center gap-1 ${mode === 'brute' ? 'bg-white text-orange-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                            >
+                                <Icons.Search size={14}/> 暴力法 O(N²)
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Visualization Canvas */}
+                    <div className="p-8 bg-slate-50 min-h-[400px] flex flex-col relative">
+
+                        {/* Stats */}
+                        <div className="absolute top-4 right-4 bg-white px-4 py-2 rounded-lg border shadow-sm z-20">
+                            <div className="text-xs text-slate-400 font-bold uppercase tracking-wider">Max Area</div>
+                            <div className="text-2xl font-black text-slate-800">{maxArea}</div>
+                        </div>
+
+                        {/* Chart Area */}
+                        <div className="flex-1 flex items-end justify-center gap-1 sm:gap-2 h-64 relative mt-10">
+
+                            {/* Water Area Overlay */}
+                            {!isFinished && ((mode === 'twoPointer' && left < right) || (mode === 'brute' && bruteI < bruteJ)) && (
+                                <div
+                                    className="absolute bottom-0 bg-blue-400/30 border-t-2 border-blue-400 border-dashed z-0 water-fill transition-all duration-300"
+                                    style={{
+                                        left: mode === 'twoPointer'
+                                            ? `calc(${left * (100 / heights.length)}% + 4px)`
+                                            : `calc(${bruteI * (100 / heights.length)}% + 4px)`,
+                                        width: mode === 'twoPointer'
+                                            ? `calc(${(right - left) * (100 / heights.length)}% - 8px)`
+                                            : `calc(${(bruteJ - bruteI) * (100 / heights.length)}% - 8px)`,
+                                        height: mode === 'twoPointer'
+                                            ? `${(Math.min(heights[left], heights[right]) / maxH) * 100}%`
+                                            : `${(Math.min(heights[bruteI], heights[bruteJ]) / maxH) * 100}%`
+                                    }}
+                                >
+                                    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-blue-800 font-bold opacity-70 text-xs sm:text-sm">
+                                        Water
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Bars */}
+                            {heights.map((h, i) => {
+                                // Status Check
+                                let isActive = false;
+                                let isBest = false;
+
+                                if (mode === 'twoPointer') {
+                                    if (!isFinished && (i === left || i === right)) isActive = true;
+                                } else {
+                                    if (!isFinished && (i === bruteI || i === bruteJ)) isActive = true;
+                                }
+
+                                if (bestPair && (i === bestPair.l || i === bestPair.r)) isBest = true;
+
+                                // Style
+                                let bgClass = "bg-slate-300";
+                                if (isBest) bgClass = "bg-green-400"; // Best so far
+                                if (isActive) bgClass = "bg-blue-500"; // Current pointers
+
+                                return (
+                                    <div key={i} className="flex-1 h-full flex flex-col justify-end items-center group relative z-10">
+                                        {/* Bar */}
+                                        <div
+                                            className={`w-full max-w-[40px] rounded-t-md bar-transition ${bgClass} shadow-sm`}
+                                            style={{ height: `${(h / maxH) * 100}%` }}
+                                        >
+                                            {/* Tooltip */}
+                                            <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-slate-800 text-white text-[10px] px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+                                                H:{h}
+                                            </div>
+                                        </div>
+
+                                        {/* Index Label */}
+                                        <div className={`text-[10px] mt-2 font-mono ${isActive ? 'text-blue-600 font-bold' : 'text-slate-400'}`}>
+                                            {i}
+                                        </div>
+
+                                        {/* Pointer Arrow */}
+                                        {isActive && (
+                                            <div className="absolute -bottom-6 text-blue-500 animate-bounce">
+                                                <Icons.ArrowUp />
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            })}
+                        </div>
+
+                    </div>
+
+                    {/* Controls */}
+                    <div className="border-t border-slate-100 p-4 bg-white">
+                        <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+                            <div className="flex-1 bg-blue-50 text-blue-800 px-4 py-3 rounded-lg text-sm border-l-4 border-blue-500 w-full sm:w-auto shadow-sm whitespace-pre-line transition-all">
+                                {message}
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <button onClick={() => setIsPlaying(!isPlaying)} disabled={isFinished} className={`flex items-center gap-2 px-4 py-2 rounded-lg text-white font-medium transition ${isPlaying ? 'bg-red-500 hover:bg-red-600' : 'bg-blue-600 hover:bg-blue-700'} disabled:opacity-50`}>
+                                    {isPlaying ? <Icons.Pause /> : <Icons.Play />}
+                                    <span className="hidden sm:inline">{isPlaying ? "暂停" : "自动"}</span>
+                                </button>
+                                <button onClick={stepForward} disabled={isPlaying || isFinished} className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 font-medium transition disabled:opacity-50">
+                                    <Icons.Step />
+                                    <span className="hidden sm:inline">单步</span>
+                                </button>
+                                <button onClick={() => resetState()} className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition">
+                                    <Icons.Reset />
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        );
+    };
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+</script>
+</body>
+</html>

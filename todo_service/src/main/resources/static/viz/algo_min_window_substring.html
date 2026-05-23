@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>最小覆盖子串 - 算法可视化</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <style>
+        body { background-color: #f8fafc; font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; }
+        .cell-transition { transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+        .window-transition { transition: all 0.3s ease-out; }
+        .fade-enter { animation: fadeIn 0.4s ease-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+        /* 计数器跳动 */
+        .count-update { animation: bump 0.2s; }
+        @keyframes bump { 0% { transform: scale(1); } 50% { transform: scale(1.2); } 100% { transform: scale(1); } }
+    </style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel">
+    const { useState, useEffect, useRef } = React;
+
+    // --- 图标组件 ---
+    const Icons = {
+        Play: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>,
+        Pause: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>,
+        Step: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>,
+        Reset: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 12" /><path d="M3 3v9h9" /></svg>,
+        Settings: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>,
+        Shuffle: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="16 3 21 3 21 8"></polyline><line x1="4" y1="20" x2="21" y2="3"></line><polyline points="21 16 21 21 16 21"></polyline><line x1="15" y1="15" x2="21" y2="21"></line><line x1="4" y1="4" x2="9" y2="9"></line></svg>
+    };
+
+    const App = () => {
+        // --- 状态定义 ---
+        const [sourceStr, setSourceStr] = useState("ADOBECODEBANC");
+        const [targetStr, setTargetStr] = useState("ABC");
+
+        // 核心数据
+        const [s, setS] = useState("ADOBECODEBANC");
+        const [t, setT] = useState("ABC");
+
+        // 算法状态
+        const [left, setLeft] = useState(0);
+        const [right, setRight] = useState(0);
+        const [windowMap, setWindowMap] = useState({}); // { char: count }
+        const [targetMap, setTargetMap] = useState({}); // { char: count }
+        const [formed, setFormed] = useState(0); // 当前窗口中满足要求的字符种类数
+        const [required, setRequired] = useState(0); // t 中唯一字符的数量
+
+        const [minLen, setMinLen] = useState(Infinity);
+        const [minWindow, setMinWindow] = useState({ start: -1, end: -1 });
+
+        const [phase, setPhase] = useState("expand"); // 'expand' | 'shrink' | 'done'
+
+        // 运行控制
+        const [isPlaying, setIsPlaying] = useState(false);
+        const [isFinished, setIsFinished] = useState(false);
+        const [message, setMessage] = useState("准备就绪");
+        const [msgColor, setMsgColor] = useState("text-slate-600");
+
+        const timerRef = useRef(null);
+
+        // --- 初始化 ---
+        const buildMap = (str) => {
+            const map = {};
+            for (let c of str) map[c] = (map[c] || 0) + 1;
+            return map;
+        };
+
+        const reset = (src = s, tgt = t) => {
+            setIsPlaying(false);
+            setIsFinished(false);
+            setS(src);
+            setT(tgt);
+
+            const tMap = buildMap(tgt);
+            setTargetMap(tMap);
+            setWindowMap({});
+            setRequired(Object.keys(tMap).length);
+            setFormed(0);
+
+            setLeft(0);
+            setRight(0);
+            setMinLen(Infinity);
+            setMinWindow({ start: -1, end: -1 });
+
+            setPhase("expand");
+            setMessage("初始化完成。准备开始寻找最小覆盖子串。");
+            setMsgColor("text-slate-600");
+
+            if (timerRef.current) clearInterval(timerRef.current);
+        };
+
+        const loadInput = () => {
+            if (!sourceStr || !targetStr) return;
+            reset(sourceStr, targetStr);
+        };
+
+        const randomInput = () => {
+            const chars = "ABCDE";
+            const sLen = 12 + Math.floor(Math.random() * 5);
+            const tLen = 3 + Math.floor(Math.random() * 2);
+            let newS = "";
+            let newT = "";
+            for(let i=0; i<sLen; i++) newS += chars[Math.floor(Math.random() * chars.length)];
+            for(let i=0; i<tLen; i++) newT += chars[Math.floor(Math.random() * chars.length)];
+
+            setSourceStr(newS);
+            setTargetStr(newT);
+            reset(newS, newT);
+            setMessage(`随机生成 S(${newS}) 和 T(${newT})`);
+        };
+
+        useEffect(() => {
+            reset();
+        }, []);
+
+        // --- 核心算法逻辑 ---
+        const stepForward = () => {
+            if (isFinished) return;
+
+            // Phase 1: Expand (Move Right)
+            if (phase === "expand") {
+                if (right >= s.length) {
+                    setIsFinished(true);
+                    setIsPlaying(false);
+                    if (minLen === Infinity) {
+                        setMessage("遍历结束。未找到覆盖子串。");
+                        setMsgColor("text-red-600");
+                    } else {
+                        setMessage(`遍历结束。最小覆盖子串: "${s.substring(minWindow.start, minWindow.end + 1)}"`);
+                        setMsgColor("text-green-600");
+                    }
+                    return;
+                }
+
+                const char = s[right];
+                const newWindowMap = { ...windowMap };
+                newWindowMap[char] = (newWindowMap[char] || 0) + 1;
+                setWindowMap(newWindowMap);
+
+                let nextFormed = formed;
+                let msg = `R 右移。加入字符 '${char}'。`;
+                let color = "text-blue-600";
+
+                if (targetMap[char] && newWindowMap[char] === targetMap[char]) {
+                    nextFormed++;
+                    msg += ` 字符 '${char}' 数量达标！`;
+                    color = "text-green-600";
+                }
+
+                setFormed(nextFormed);
+
+                // 检查是否满足条件，决定下一阶段
+                if (nextFormed === required) {
+                    setPhase("shrink"); // 满足条件了，尝试收缩
+                    setMessage(msg + " 窗口已覆盖 T，转为收缩 (Shrink) 阶段。");
+                    // 注意：这里 Right 指针在 expand 阶段结束时才真正 +1 (逻辑上)，
+                    // 但为了可视化对应当前处理的字符，我们在 update 之后，如果还不是 shrink，则 right++
+                    // 但是如果我们要收缩，right 应该保持不动，等 shrink 完再动？
+                    // 算法： while(left<=right && formed==required) { shrink... }
+                    // 所以这里我们不移动 right，进入 shrink 状态循环处理
+                } else {
+                    setRight(right + 1); // 继续扩张
+                    setMessage(msg);
+                }
+
+                setMsgColor(color);
+                return;
+            }
+
+            // Phase 2: Shrink (Move Left)
+            if (phase === "shrink") {
+                // 1. 尝试更新最小窗口
+                const currentLen = right - left + 1;
+                let foundNewMin = false;
+                if (currentLen < minLen) {
+                    setMinLen(currentLen);
+                    setMinWindow({ start: left, end: right });
+                    foundNewMin = true;
+                }
+
+                // 2. 移除 Left 字符
+                const char = s[left];
+                const newWindowMap = { ...windowMap };
+                newWindowMap[char] -= 1;
+                setWindowMap(newWindowMap);
+
+                let nextFormed = formed;
+
+                // 3. 检查是否破坏了条件
+                if (targetMap[char] && newWindowMap[char] < targetMap[char]) {
+                    nextFormed--;
+                    setPhase("expand"); // 不再满足，回去扩张
+                    setRight(right + 1); // 恢复扩张，R 向前一步
+                    setMessage(`L 右移移除 '${char}'。窗口不再满足条件 (Formed: ${nextFormed}/${required})。R 继续右移。` + (foundNewMin ? " [发现新最小覆盖]" : ""));
+                    setMsgColor("text-amber-600");
+                } else {
+                    // 依然满足，继续收缩
+                    setMessage(`L 右移移除 '${char}'。窗口依然满足条件。继续收缩。` + (foundNewMin ? " [发现新最小覆盖]" : ""));
+                    setMsgColor("text-teal-600");
+                }
+
+                setFormed(nextFormed);
+                setLeft(left + 1);
+            }
+        };
+
+        // --- 自动播放 ---
+        useEffect(() => {
+            let timer;
+            if (isPlaying && !isFinished) {
+                timer = setInterval(() => {
+                    stepForward();
+                }, 1000);
+            }
+            return () => clearInterval(timer);
+        }, [isPlaying, isFinished, phase, left, right, windowMap, formed, minLen]);
+
+        // --- 渲染辅助 ---
+
+        // 渲染字符
+        const getCellClass = (idx) => {
+            let base = "w-8 h-8 sm:w-10 sm:h-10 flex items-center justify-center border rounded font-mono font-bold relative cell-transition ";
+
+            // 窗口范围
+            if (idx >= left && idx <= right) {
+                // 如果当前是满足条件的窗口 (formed == required)
+                if (formed === required) {
+                    base += "bg-green-100 border-green-500 text-green-800 shadow-sm ";
+                } else {
+                    base += "bg-blue-100 border-blue-400 text-blue-800 ";
+                }
+            } else {
+                base += "bg-white border-slate-200 text-slate-300 ";
+            }
+
+            // 全局最小解高亮 (淡一点，作为背景记忆)
+            if (minWindow.start !== -1 && idx >= minWindow.start && idx <= minWindow.end) {
+                // 仅当当前不在该位置时显示记忆色，或者叠加
+                if (!(idx >= left && idx <= right)) {
+                    base += "bg-amber-50 border-amber-200 text-amber-700/50 ";
+                }
+            }
+
+            return base;
+        };
+
+        return (
+            <div className="max-w-4xl mx-auto p-4 sm:p-6">
+                {/* 1. 顶部配置 */}
+                <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4 mb-6">
+                    <div className="flex items-center gap-2 mb-3 text-slate-700 font-bold">
+                        <Icons.Settings />
+                        <span>数据配置</span>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div>
+                            <label className="text-xs text-slate-400 font-bold uppercase">源字符串 (S)</label>
+                            <input
+                                type="text"
+                                value={sourceStr}
+                                onChange={(e) => setSourceStr(e.target.value)}
+                                className="w-full border border-slate-300 rounded-lg px-3 py-2 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
+                            />
+                        </div>
+                        <div>
+                            <label className="text-xs text-slate-400 font-bold uppercase">目标字符 (T)</label>
+                            <input
+                                type="text"
+                                value={targetStr}
+                                onChange={(e) => setTargetStr(e.target.value)}
+                                className="w-full border border-slate-300 rounded-lg px-3 py-2 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
+                            />
+                        </div>
+                    </div>
+                    <div className="flex gap-2 justify-end mt-3">
+                        <button onClick={loadInput} className="px-4 py-2 bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition font-medium text-sm">
+                            加载
+                        </button>
+                        <button onClick={randomInput} className="px-3 py-2 bg-slate-100 text-slate-600 rounded-lg hover:bg-slate-200 transition" title="随机生成">
+                            <Icons.Shuffle />
+                        </button>
+                    </div>
+                </div>
+
+                {/* 2. 主体区 */}
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+
+                    {/* 左侧：字符串可视化 */}
+                    <div className="lg:col-span-2 bg-white rounded-xl shadow-lg border border-slate-200 overflow-hidden flex flex-col">
+                        <div className="border-b border-slate-100 bg-slate-50 p-4 flex justify-between items-center">
+                            <div>
+                                <h1 className="text-xl font-bold text-slate-800">最小覆盖子串</h1>
+                                <p className="text-xs text-slate-500 mt-1">滑动窗口 · LeetCode 76</p>
+                            </div>
+                            <div className="flex flex-col items-end">
+                                <span className="text-xs font-bold text-slate-400 uppercase">Min Length</span>
+                                <span className="text-2xl font-black text-amber-600">{minLen === Infinity ? '∞' : minLen}</span>
+                            </div>
+                        </div>
+
+                        <div className="p-6 flex-1 flex flex-col items-center justify-center min-h-[240px]">
+                            {/* String Array */}
+                            <div className="flex flex-wrap justify-center gap-1 mb-8">
+                                {s.split('').map((char, idx) => (
+                                    <div key={idx} className="flex flex-col items-center relative">
+                                        <div className={getCellClass(idx)}>
+                                            {char}
+
+                                            {/* Pointers */}
+                                            {idx === left && <div className="absolute -top-6 text-[10px] font-bold text-blue-500 animate-bounce">L</div>}
+                                            {idx === right && !isFinished && <div className="absolute -top-6 text-[10px] font-bold text-amber-500 animate-bounce" style={{animationDelay: '0.1s'}}>R</div>}
+                                        </div>
+                                        <div className="text-[9px] text-slate-300 mt-1 font-mono">{idx}</div>
+                                    </div>
+                                ))}
+                            </div>
+
+                            {/* Status Indicators */}
+                            <div className="flex gap-6 text-sm">
+                                <div className={`px-3 py-1 rounded-full border ${formed === required ? 'bg-green-100 text-green-700 border-green-300' : 'bg-slate-100 text-slate-500 border-slate-200'}`}>
+                                    <span className="font-bold">Match: {formed} / {required}</span>
+                                </div>
+                                <div className={`px-3 py-1 rounded-full border ${phase === 'shrink' ? 'bg-amber-100 text-amber-700 border-amber-300' : 'bg-blue-50 text-blue-600 border-blue-200'}`}>
+                                    <span className="font-bold uppercase">{phase === 'expand' ? 'Expanding (R++)' : phase === 'shrink' ? 'Shrinking (L++)' : 'Done'}</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Controls */}
+                        <div className="border-t border-slate-100 p-4 bg-white mt-auto">
+                            <div className="flex flex-col gap-3">
+                                <div className={`px-4 py-3 rounded-lg text-sm border-l-4 transition-colors bg-slate-50 border-slate-400 ${msgColor.replace('text-', 'border-').replace('600', '500')}`}>
+                                    <span className={msgColor}>{message}</span>
+                                </div>
+
+                                <div className="flex items-center justify-center gap-2">
+                                    <button onClick={() => setIsPlaying(!isPlaying)} disabled={isFinished} className={`flex items-center gap-2 px-4 py-2 rounded-lg text-white font-medium transition ${isPlaying ? 'bg-slate-500 hover:bg-slate-600' : 'bg-amber-500 hover:bg-amber-600'} disabled:opacity-50`}>
+                                        {isPlaying ? <Icons.Pause /> : <Icons.Play />}
+                                        <span className="hidden sm:inline">{isPlaying ? "暂停" : "运行"}</span>
+                                    </button>
+                                    <button onClick={stepForward} disabled={isPlaying || isFinished} className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 font-medium transition disabled:opacity-50">
+                                        <Icons.Step />
+                                        <span className="hidden sm:inline">单步</span>
+                                    </button>
+                                    <button onClick={() => reset()} className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition" title="重置">
+                                        <Icons.Reset />
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* 右侧：哈希表监控 */}
+                    <div className="bg-white rounded-xl shadow-lg border border-slate-200 overflow-hidden flex flex-col max-h-[500px]">
+                        <div className="border-b border-slate-100 bg-slate-50 p-4">
+                            <h2 className="font-bold text-slate-700">字符统计 (Map)</h2>
+                        </div>
+                        <div className="p-4 overflow-y-auto flex-1 bg-slate-50/50">
+                            <div className="grid grid-cols-1 gap-2">
+                                {Object.keys(targetMap).map((char) => {
+                                    const need = targetMap[char];
+                                    const have = windowMap[char] || 0;
+                                    const isSatisfied = have >= need;
+
+                                    return (
+                                        <div key={char} className={`flex items-center justify-between p-3 rounded border transition-all duration-300
+                                            ${isSatisfied ? 'bg-green-50 border-green-200 shadow-sm' : 'bg-white border-slate-200'}
+                                        `}>
+                                            <div className="flex items-center gap-3">
+                                                <div className={`w-8 h-8 rounded flex items-center justify-center font-bold text-lg ${isSatisfied ? 'bg-green-200 text-green-800' : 'bg-slate-200 text-slate-600'}`}>
+                                                    {char}
+                                                </div>
+                                                <span className="text-xs text-slate-500 font-bold uppercase">Count</span>
+                                            </div>
+                                            <div className="flex items-center gap-2 font-mono">
+                                                <span className={`font-bold text-lg ${isSatisfied ? 'text-green-600' : 'text-red-500'}`}>{have}</span>
+                                                <span className="text-slate-400">/</span>
+                                                <span className="text-slate-600">{need}</span>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        );
+    };
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+</script>
+</body>
+</html>

@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>复制带随机指针的链表 - 算法可视化</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <style>
+        body { background-color: #f8fafc; font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; }
+        .node-transition { transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1); }
+        .path-transition { transition: d 0.5s ease-in-out, opacity 0.3s; }
+        .fade-enter { animation: fadeIn 0.5s forwards; }
+        @keyframes fadeIn { from { opacity: 0; transform: scale(0); } to { opacity: 1; transform: scale(1); } }
+
+        /* 连线流光 */
+        .flow-line { stroke-dasharray: 8; animation: flow 1s linear infinite; }
+        @keyframes flow { to { stroke-dashoffset: -16; } }
+    </style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel">
+    const { useState, useEffect, useRef, useMemo } = React;
+
+    // --- 图标组件 ---
+    const Icons = {
+        Play: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>,
+        Pause: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>,
+        Step: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>,
+        Reset: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 12" /><path d="M3 3v9h9" /></svg>,
+        Settings: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>,
+        Shuffle: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="16 3 21 3 21 8"></polyline><line x1="4" y1="20" x2="21" y2="3"></line><polyline points="21 16 21 21 16 21"></polyline><line x1="15" y1="15" x2="21" y2="21"></line><line x1="4" y1="4" x2="9" y2="9"></line></svg>
+    };
+
+    const App = () => {
+        // --- 状态定义 ---
+        // LeetCode 格式: [[val, random_index], ...]
+        const [inputStr, setInputStr] = useState("[[7,null],[13,0],[11,4],[10,2],[1,0]]");
+
+        // 核心数据
+        const [nodes, setNodes] = useState([]); // { id, val, randomIdx, type: 'orig'|'copy' }
+        const [phase, setPhase] = useState("start"); // start -> interweave -> random -> split -> done
+        const [ptr, setPtr] = useState(0); // 当前处理的节点索引
+
+        // 运行控制
+        const [isPlaying, setIsPlaying] = useState(false);
+        const [isFinished, setIsFinished] = useState(false);
+        const [message, setMessage] = useState("准备就绪");
+        const [msgColor, setMsgColor] = useState("text-slate-600");
+
+        const timerRef = useRef(null);
+
+        // --- 初始化 ---
+        const parseInput = (str) => {
+            try {
+                // 替换 null 为 null 字符串方便解析，或者直接 eval (不推荐但方便演示)
+                // 这里用简单的 JSON.parse，假设输入是合法的 JSON 数组
+                // 用户输入可能不带引号，这里简单处理一下
+                const fixedStr = str.replace(/null/g, "null");
+                return JSON.parse(fixedStr);
+            } catch (e) {
+                return null;
+            }
+        };
+
+        const reset = (data) => {
+            if (!data) return;
+            // 构建初始链表
+            const newNodes = data.map((item, idx) => ({
+                id: idx,
+                val: item[0],
+                randomIdx: item[1], // index or null
+                type: 'orig',
+                next: idx < data.length - 1 ? idx + 1 : null
+            }));
+
+            setNodes(newNodes);
+            setPhase("start");
+            setPtr(0);
+            setIsPlaying(false);
+            setIsFinished(false);
+            setMessage("原始链表已加载。Phase 1: 交织克隆节点 (Interweave)。");
+            setMsgColor("text-slate-600");
+
+            if (timerRef.current) clearInterval(timerRef.current);
+        };
+
+        const loadInput = () => {
+            const data = parseInput(inputStr);
+            if (!Array.isArray(data)) {
+                alert("输入格式错误，应为 [[val, random_idx], ...]");
+                return;
+            }
+            reset(data);
+        };
+
+        const randomInput = () => {
+            const len = 5;
+            const arr = [];
+            for (let i = 0; i < len; i++) {
+                const val = Math.floor(Math.random() * 20);
+                const rand = Math.random() > 0.3 ? Math.floor(Math.random() * len) : null;
+                arr.push([val, rand]);
+            }
+            setInputStr(JSON.stringify(arr));
+            reset(arr);
+        };
+
+        useEffect(() => {
+            loadInput();
+        }, []);
+
+        // --- 核心算法逻辑 ---
+        const stepForward = () => {
+            if (isFinished) return;
+
+            let newNodes = [...nodes];
+
+            // Phase 1: Interweave (Clone Nodes)
+            if (phase === "start") {
+                setPhase("interweave");
+                setMessage("开始 Phase 1: 在每个节点后插入克隆节点。");
+                return;
+            }
+
+            if (phase === "interweave") {
+                if (ptr >= nodes.length) {
+                    setPhase("random_start");
+                    setPtr(0);
+                    setMessage("节点交织完成！准备 Phase 2: 复制随机指针。");
+                    return;
+                }
+
+                const currNode = nodes[ptr];
+                // Only process original nodes
+                if (currNode.type === 'orig') {
+                    // Create Clone
+                    const clone = {
+                        id: `c-${currNode.id}`,
+                        val: currNode.val,
+                        randomIdx: null, // Will set later
+                        type: 'copy',
+                        next: currNode.next // Temporarily points to next original
+                    };
+
+                    // Insert into array visually?
+                    // No, 'nodes' array indices matter for visual layout.
+                    // We need to splice it in.
+
+                    // But wait, our 'ptr' relies on index.
+                    // If we splice, indices shift.
+                    // Let's rebuild the array.
+
+                    // Find index of currNode in current array
+                    const idx = newNodes.findIndex(n => n.id === currNode.id);
+                    newNodes.splice(idx + 1, 0, clone);
+
+                    // Update next pointers logically not needed for visualization array,
+                    // but needed if we were tracing pointers.
+                    // Here we rely on array order for visualization mostly.
+
+                    setNodes(newNodes);
+                    setMessage(`复制节点 ${currNode.val} -> ${currNode.val}'，插入到原节点之后。`);
+                    setMsgColor("text-teal-600");
+
+                    // Move ptr: original nodes are now at i, i+2, i+4...
+                    // But since we just modified array, the next original node is at idx + 2
+                    // We can just find the next 'orig' node or increment carefully.
+                    // Let's just point to the next 'orig' by ID logic or just increment logic.
+                    // Since we spliced at idx+1, the old next is at idx+2.
+
+                    // Simple approach: we scan 'newNodes' next time.
+                    // But for React state consistency, we need to know WHICH node to process next.
+                    // Let's increment ptr (logical index in original list).
+                    // Actually, let's switch to checking node type.
+
+                    // Hack: just loop through newNodes, find first 'orig' that isn't followed by 'copy'.
+                    // Or easier: Maintain a separate logical pointer.
+                    // Let's just skip the clone we just added.
+
+                    // In "Interweave", we process original nodes one by one.
+                    // Since we modify the array, let's find the next 'orig' node that doesn't have a copy next to it?
+                    // Actually, the standard algorithm is:
+                    // iter = head; while(iter) { next = iter.next; iter.next = new Node(iter.val); iter.next.next = next; iter = next; }
+
+                    // Visual simplification: We assume we process by index of ORIGINAL list.
+                    // Current array length increases.
+                    // Let's refactor: 'ptr' tracks index in the *current* array.
+                    // After insertion, we skip the new node.
+                    setPtr(idx + 2);
+                } else {
+                    // Should not happen if logic is right
+                    setPtr(ptr + 1);
+                }
+                return;
+            }
+
+            // Phase 2: Copy Random
+            if (phase === "random_start") {
+                setPhase("random");
+                setMessage("开始 Phase 2: 利用 A.next.random = A.random.next 设置随机指针。");
+                return;
+            }
+
+            if (phase === "random") {
+                if (ptr >= nodes.length) {
+                    setPhase("split_start");
+                    setPtr(0);
+                    setMessage("随机指针复制完成！准备 Phase 3: 拆分链表。");
+                    return;
+                }
+
+                const curr = nodes[ptr];
+                if (curr.type === 'orig') {
+                    const clone = nodes[ptr + 1]; // The one right after
+
+                    if (curr.randomIdx !== null) {
+                        // Logic: clone.random = curr.random.next
+                        // In our array, curr.randomIdx is the index in the ORIGINAL list.
+                        // We need to map that to the current interleaved array.
+                        // Original index i -> Interleaved index 2*i
+
+                        // Wait, 'randomIdx' in state is raw index.
+                        const origTargetIdx = curr.randomIdx;
+                        const interleavedTargetIdx = origTargetIdx * 2;
+                        const cloneTargetIdx = interleavedTargetIdx + 1; // The clone of the target
+
+                        // Update clone's random info for visual
+                        clone.randomIdx = cloneTargetIdx; // Point to the clone
+
+                        setMessage(`原节点 ${curr.val} 随机指向索引 ${origTargetIdx}。克隆节点 ${clone.val}' 随之指向克隆索引 ${cloneTargetIdx}。`);
+                        setMsgColor("text-orange-600");
+
+                        // We need to update the node in state
+                        newNodes[ptr+1] = { ...clone };
+                        setNodes(newNodes);
+                    } else {
+                        setMessage(`原节点 ${curr.val} 随机指向 null。克隆节点也指向 null。`);
+                        setMsgColor("text-slate-500");
+                    }
+                }
+                setPtr(ptr + 2); // Move to next pair
+                return;
+            }
+
+            // Phase 3: Split
+            if (phase === "split_start") {
+                setPhase("split");
+                setMessage("开始 Phase 3: 恢复原链表，提取克隆链表。");
+                return;
+            }
+
+            if (phase === "split") {
+                // To visualize split nicely, we can just filter the array into two rows?
+                // Or animate them moving apart?
+                // For 'step', let's just mark the phase as done and let CSS handle the position shift
+                // Real algorithm iterates and unweaves next pointers.
+
+                // For visualization simplicity, we just declare it done and update layout mode
+                setIsFinished(true);
+                setIsPlaying(false);
+                setMessage("拆分完成！得到两个独立的链表。");
+                setMsgColor("text-green-600");
+                setPhase("done");
+                return;
+            }
+        };
+
+        // --- 自动播放 ---
+        useEffect(() => {
+            let timer;
+            if (isPlaying && !isFinished) {
+                timer = setInterval(() => {
+                    stepForward();
+                }, 1000);
+            }
+            return () => clearInterval(timer);
+        }, [isPlaying, isFinished, phase, ptr, nodes]);
+
+        // --- 渲染辅助 ---
+        const NODE_W = 60;
+        const NODE_H = 40;
+        const GAP_X = 40;
+        const START_X = 50;
+        const START_Y = 100;
+
+        // 计算节点坐标
+        const getLayout = () => {
+            return nodes.map((node, i) => {
+                let x, y;
+
+                if (phase === "done") {
+                    // Split view
+                    const isCopy = node.type === 'copy';
+                    const idx = Math.floor(i / 2);
+                    x = START_X + idx * (NODE_W + GAP_X);
+                    y = isCopy ? START_Y + 120 : START_Y; // Copies move down
+                } else {
+                    // Linear view (Interleaved)
+                    x = START_X + i * (NODE_W + GAP_X);
+                    y = START_Y;
+                }
+                return { x, y, ...node };
+            });
+        };
+
+        const layoutNodes = getLayout();
+
+        return (
+            <div className="max-w-5xl mx-auto p-4 sm:p-6">
+                {/* 1. 顶部配置 */}
+                <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4 mb-6">
+                    <div className="flex items-center gap-2 mb-3 text-slate-700 font-bold">
+                        <Icons.Settings />
+                        <span>数据配置 (JSON)</span>
+                    </div>
+                    <div className="flex flex-col sm:flex-row gap-3">
+                        <input
+                            type="text"
+                            value={inputStr}
+                            onChange={(e) => setInputStr(e.target.value)}
+                            className="flex-1 border border-slate-300 rounded-lg px-3 py-2 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                            placeholder="[[7,null],[13,0],...]"
+                        />
+                        <div className="flex gap-2">
+                            <button onClick={loadInput} className="px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition font-medium text-sm">
+                                加载
+                            </button>
+                            <button onClick={randomInput} className="px-3 py-2 bg-slate-100 text-slate-600 rounded-lg hover:bg-slate-200 transition" title="随机生成">
+                                <Icons.Shuffle />
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                {/* 2. 主体区 */}
+                <div className="bg-white rounded-xl shadow-lg border border-slate-200 overflow-hidden">
+                    {/* Header */}
+                    <div className="border-b border-slate-100 bg-slate-50 p-4 flex flex-col sm:flex-row justify-between items-center gap-4">
+                        <div>
+                            <h1 className="text-xl font-bold text-slate-800">复制带随机指针的链表</h1>
+                            <p className="text-xs text-slate-500 mt-1">深拷贝 (Deep Copy) · Interweaving Strategy · LeetCode 138</p>
+                        </div>
+                        <div className="flex gap-4 text-xs font-bold">
+                            <div className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-white border border-slate-300"></span> Original</div>
+                            <div className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-teal-50 border border-teal-500"></span> Cloned</div>
+                        </div>
+                    </div>
+
+                    {/* Canvas */}
+                    <div className="p-4 sm:p-8 bg-slate-50 min-h-[400px] overflow-x-auto relative">
+                        <div className="relative h-[300px]" style={{ width: Math.max(800, layoutNodes.length * 100 + 100) }}>
+                            <svg className="absolute inset-0 w-full h-full pointer-events-none z-0">
+                                <defs>
+                                    <marker id="arrow" markerWidth="10" markerHeight="7" refX="28" refY="3.5" orient="auto">
+                                        <polygon points="0 0, 10 3.5, 0 7" fill="#94a3b8" />
+                                    </marker>
+                                    <marker id="arrow-random" markerWidth="8" markerHeight="6" refX="24" refY="3" orient="auto">
+                                        <polygon points="0 0, 8 3, 0 6" fill="#f97316" />
+                                    </marker>
+                                </defs>
+
+                                {layoutNodes.map((node, i) => {
+                                    const els = [];
+
+                                    // 1. Next Pointer (Straight Line)
+                                    // In "done" phase, only connect to same type
+                                    // In other phases, connect to immediate next
+                                    let nextNode = null;
+                                    if (phase === "done") {
+                                        // Connect to next of same type
+                                        if (i + 2 < layoutNodes.length) nextNode = layoutNodes[i+2];
+                                    } else {
+                                        if (i + 1 < layoutNodes.length) nextNode = layoutNodes[i+1];
+                                    }
+
+                                    if (nextNode) {
+                                        els.push(
+                                            <line
+                                                key={`next-${i}`}
+                                                x1={node.x} y1={node.y}
+                                                x2={nextNode.x} y2={nextNode.y}
+                                                stroke="#cbd5e1" strokeWidth="2" markerEnd="url(#arrow)"
+                                                className="path-transition"
+                                            />
+                                        );
+                                    }
+
+                                    // 2. Random Pointer (Curved)
+                                    // Determine logic target index in the CURRENT layout array
+                                    // For original nodes: randomIdx is original index -> map to current
+                                    // For copied nodes: randomIdx is already current index (if set)
+
+                                    let targetIdx = -1;
+                                    if (node.randomIdx !== null) {
+                                        if (node.type === 'orig' && phase !== 'done') {
+                                            // Mapping original index to interleaved index
+                                            // If we have inserted clones up to some point, indices shift.
+                                            // Simplified: In interweave phase, we just assume fully interleaved for drawing simplicity?
+                                            // No, let's use the stored randomIdx which assumes input format.
+                                            // If phase >= interweave done, indices are 2*idx.
+
+                                            // To make it simple: input provides random index based on ORIGINAL list.
+                                            // If we are interleaved, target is at node.randomIdx * 2
+                                            targetIdx = node.randomIdx * 2;
+                                        } else {
+                                            targetIdx = node.randomIdx;
+                                        }
+                                    }
+
+                                    if (targetIdx !== -1 && targetIdx < layoutNodes.length) {
+                                        const target = layoutNodes[targetIdx];
+                                        const isBack = targetIdx < i;
+                                        const arcHeight = isBack ? 50 + (i - targetIdx) * 5 : -50 - (targetIdx - i) * 5;
+                                        const midX = (node.x + target.x) / 2;
+                                        const midY = node.y + arcHeight;
+
+                                        const pathD = `M ${node.x} ${node.y} Q ${midX} ${midY} ${target.x} ${target.y}`;
+
+                                        // Only show random for copy if set
+                                        if (node.type === 'orig' || (node.type === 'copy' && node.randomIdx !== null)) {
+                                            els.push(
+                                                <path
+                                                    key={`rand-${i}`}
+                                                    d={pathD}
+                                                    fill="none"
+                                                    stroke="#fdba74"
+                                                    strokeWidth="2"
+                                                    strokeDasharray="4"
+                                                    markerEnd="url(#arrow-random)"
+                                                    className="path-transition"
+                                                />
+                                            );
+                                        }
+                                    }
+
+                                    return els;
+                                })}
+                            </svg>
+
+                            {layoutNodes.map((node, i) => (
+                                <div
+                                    key={node.id}
+                                    className={`absolute w-12 h-12 flex items-center justify-center border-2 rounded-lg font-bold shadow-sm node-transition z-10 fade-enter
+                                        ${node.type === 'copy' ? 'bg-teal-50 border-teal-500 text-teal-800' : 'bg-white border-slate-300 text-slate-700'}
+                                        ${i === ptr || i === ptr + 1 ? 'ring-4 ring-offset-1 ring-blue-200' : ''}
+                                    `}
+                                    style={{ left: node.x - 24, top: node.y - 24 }}
+                                >
+                                    {node.val}
+                                    <div className="absolute -bottom-5 text-[9px] text-slate-400 font-mono">
+                                        {node.type === 'copy' ? `${node.val}'` : `idx:${i/2}`}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+
+                    {/* Controls */}
+                    <div className="border-t border-slate-100 p-4 bg-white">
+                        <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+                            <div className={`flex-1 px-4 py-3 rounded-lg text-sm border-l-4 w-full sm:w-auto transition-colors bg-slate-50 border-slate-400 ${msgColor.replace('text-', 'border-').replace('600', '500')} ${msgColor}`}>
+                                {message}
+                            </div>
+
+                            <div className="flex items-center gap-2">
+                                <button onClick={() => setIsPlaying(!isPlaying)} disabled={isFinished} className={`flex items-center gap-2 px-4 py-2 rounded-lg text-white font-medium transition ${isPlaying ? 'bg-amber-500 hover:bg-amber-600' : 'bg-teal-600 hover:bg-teal-700'} disabled:opacity-50`}>
+                                    {isPlaying ? <Icons.Pause /> : <Icons.Play />}
+                                    <span className="hidden sm:inline">{isPlaying ? "暂停" : "运行"}</span>
+                                </button>
+                                <button onClick={stepForward} disabled={isPlaying || isFinished} className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 font-medium transition disabled:opacity-50">
+                                    <Icons.Step />
+                                    <span className="hidden sm:inline">单步</span>
+                                </button>
+                                <button onClick={() => loadInput()} className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition" title="重置">
+                                    <Icons.Reset />
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        );
+    };
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+</script>
+</body>
+</html>

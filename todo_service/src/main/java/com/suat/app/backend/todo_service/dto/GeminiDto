@@ -1,0 +1,23 @@
+package com.suat.app.backend.todo_service.dto;
+
+import java.util.List;
+
+// 1. (关键) 创建一个 "包装器" class (它是 public 的)
+public class GeminiDto {
+
+    // 2. (关键) 将所有 DTOs 定义为 "public static record" (嵌套)
+
+    // --- 请求 (Request) ---
+
+    public static record GeminiRequest(List<Content> contents) {}
+
+    public static record Content(List<Part> parts) {}
+
+    public static record Part(String text) {}
+
+    // --- 响应 (Response) ---
+
+    public static record GeminiResponse(List<Candidate> candidates) {}
+
+    public static record Candidate(Content content) {}
+}

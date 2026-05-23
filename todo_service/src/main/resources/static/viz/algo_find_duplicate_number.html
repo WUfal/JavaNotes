@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>寻找重复数 - 算法可视化</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <style>
+        body { background-color: #f8fafc; font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; }
+        .cell-transition { transition: all 0.4s cubic-bezier(0.25, 0.8, 0.25, 1); }
+        .pointer-transition { transition: all 0.5s cubic-bezier(0.25, 0.8, 0.25, 1); }
+        .fade-enter { animation: fadeIn 0.5s ease-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: scale(0.9); } to { opacity: 1; transform: scale(1); } }
+
+        /* 连线动画 */
+        .edge-path { stroke-dasharray: 10; animation: dash 30s linear infinite; }
+        @keyframes dash { to { stroke-dashoffset: -1000; } }
+    </style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel">
+    const { useState, useEffect, useRef, useMemo } = React;
+
+    // --- 图标组件 ---
+    const Icons = {
+        Play: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>,
+        Pause: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>,
+        Step: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>,
+        Reset: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 12" /><path d="M3 3v9h9" /></svg>,
+        Settings: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>,
+        Shuffle: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="16 3 21 3 21 8"></polyline><line x1="4" y1="20" x2="21" y2="3"></line><polyline points="21 16 21 21 16 21"></polyline><line x1="15" y1="15" x2="21" y2="21"></line><line x1="4" y1="4" x2="9" y2="9"></line></svg>
+    };
+
+    // --- 辅助函数 ---
+    const parseInput = (str) => {
+        return str.split(/[,，\s]+/)
+            .map(v => parseInt(v.trim()))
+            .filter(v => !isNaN(v));
+    };
+
+    // 计算图节点坐标 (圆形布局)
+    const getGraphLayout = (nums, width, height) => {
+        const nodes = [];
+        const n = nums.length;
+        const centerX = width / 2;
+        const centerY = height / 2;
+        const radius = Math.min(width, height) / 2 - 40;
+
+        for (let i = 0; i < n; i++) {
+            const angle = (i / n) * 2 * Math.PI - Math.PI / 2; // Start from top
+            nodes.push({
+                idx: i,
+                val: nums[i],
+                x: centerX + radius * Math.cos(angle),
+                y: centerY + radius * Math.sin(angle)
+            });
+        }
+        return nodes;
+    };
+
+    const App = () => {
+        // --- 状态定义 ---
+        const [inputStr, setInputStr] = useState("1, 3, 4, 2, 2");
+
+        // 核心数据
+        const [nums, setNums] = useState([1, 3, 4, 2, 2]);
+
+        // 算法状态
+        const [slow, setSlow] = useState(0);
+        const [fast, setFast] = useState(0);
+        const [finder, setFinder] = useState(null); // 第二阶段的指针
+        const [phase, setPhase] = useState("intersection"); // 'intersection' | 'entrance' | 'found'
+
+        // 运行控制
+        const [isPlaying, setIsPlaying] = useState(false);
+        const [isFinished, setIsFinished] = useState(false);
+        const [message, setMessage] = useState("准备就绪");
+        const [msgColor, setMsgColor] = useState("text-slate-600");
+
+        const timerRef = useRef(null);
+
+        // --- 初始化 ---
+        const reset = (arr = nums) => {
+            setIsPlaying(false);
+            setIsFinished(false);
+            setSlow(0);
+            setFast(0);
+            setFinder(null);
+            setPhase("intersection");
+            setMessage("Phase 1: 寻找相遇点 (快慢指针)");
+            setMsgColor("text-slate-600");
+            if (timerRef.current) clearInterval(timerRef.current);
+        };
+
+        const loadInput = () => {
+            const arr = parseInput(inputStr);
+            if (arr.length < 2) {
+                alert("数组长度必须至少为 2");
+                return;
+            }
+            // 验证是否符合题目要求：长度n+1，数值1-n
+            // 这里为了演示宽容一点，只要是合法索引跳转即可
+            const valid = arr.every(x => x >= 0 && x < arr.length); // 支持 0-indexed 跳转演示
+            // LeetCode题目是1-n，但也意味着值必须是有效的索引
+
+            setNums(arr);
+            reset(arr);
+        };
+
+        const randomInput = () => {
+            // 生成带环链表逻辑的数组
+            // 长度 n=10, 范围 1-9, 必定有重复
+            const n = 10;
+            const arr = new Array(n).fill(0);
+            // 构造一个链：0 -> 1 -> ... -> k -> ... -> m -> k (环入口)
+            // 简单的随机生成可能导致多个环或死胡同，为了演示 Floyd 算法，我们需要保证从 index 0 出发能进环
+            // 生成策略：
+            // 1. 生成一个排列 0..n-1
+            // 2. 将最后一个元素的 next 指向 中间某个元素
+
+            const path = Array.from({length: n}, (_, i) => i);
+            // Shuffle path to make indices random-looking? No, indices are fixed positions.
+            // Values are the next pointers.
+
+            // Let's create a cycle: 0 -> p1 -> p2 -> ... -> pn -> pk (where pk is one of previous)
+            const cycleEntry = 2 + Math.floor(Math.random() * (n - 3)); // random entry point
+
+            // Fill array such that: nums[i] = i+1, and last one points to entry
+            for(let i=0; i<n-1; i++) arr[i] = i + 1;
+            arr[n-1] = cycleEntry;
+
+            // Shuffle values? No, indices are fixed. Values determine topology.
+            // If we want random looking array: [1,3,4,2,2]
+            // 0->1, 1->3, 3->2, 2->4, 4->2.
+            // We can just use the generated cycle structure above.
+            // To make it look like "unsorted array", we can swap (index, value) pairs? No.
+
+            // Just use the simple constructed cycle for clarity
+            const str = arr.join(", ");
+            setInputStr(str);
+            setNums(arr);
+            reset(arr);
+            setMessage(`已生成带环数组 (环入口: ${cycleEntry})`);
+        };
+
+        useEffect(() => {
+            reset();
+        }, []);
+
+        // --- 核心算法逻辑 ---
+        const stepForward = () => {
+            if (isFinished) return;
+
+            // Phase 1: 寻找相遇点
+            if (phase === "intersection") {
+                const nextSlow = nums[slow];
+                const nextFast = nums[nums[fast]]; // 走两步
+
+                // 检查是否相遇
+                // 注意：在移动前检查还是移动后？通常do-while，这里模拟step
+                // 我们先移动，再判断状态
+
+                // 边界检查 (防止非法跳转)
+                if (nextFast === undefined || nums[fast] === undefined) {
+                    setIsFinished(true);
+                    setIsPlaying(false);
+                    setMessage("数组不包含有效的环结构（索引越界）。");
+                    setMsgColor("text-red-600");
+                    return;
+                }
+
+                setSlow(nextSlow);
+                setFast(nextFast);
+
+                if (nextSlow === nextFast) {
+                    setPhase("entrance");
+                    setFinder(0); // 启动 Finder 指针
+                    setMessage(`相遇在索引 ${nextSlow}！进入 Phase 2：寻找环入口 (重复数)。`);
+                    setMsgColor("text-purple-600");
+                } else {
+                    setMessage(`Slow -> ${nextSlow}, Fast -> ${nextFast}`);
+                }
+            }
+            // Phase 2: 寻找入口
+            else if (phase === "entrance") {
+                if (slow === finder) {
+                    setIsFinished(true);
+                    setIsPlaying(false);
+                    setMessage(`找到重复数 (环入口)：${slow} (索引 ${slow} 被多个位置指向)`);
+                    setMsgColor("text-green-600");
+                    return;
+                }
+
+                const nextSlow = nums[slow];
+                const nextFinder = nums[finder];
+
+                setSlow(nextSlow);
+                setFinder(nextFinder);
+
+                if (nextSlow === nextFinder) {
+                    // 下一帧就相遇了，这里更新状态
+                    // 但为了动画流畅，我们等到下一帧再 finish
+                    setMessage(`Finder 和 Slow 即将相遇在 ${nextSlow}...`);
+                } else {
+                    setMessage(`Slow -> ${nextSlow}, Finder -> ${nextFinder}`);
+                }
+            }
+        };
+
+        // --- 自动播放 ---
+        useEffect(() => {
+            let timer;
+            if (isPlaying && !isFinished) {
+                timer = setInterval(() => {
+                    stepForward();
+                }, 1000);
+            }
+            return () => clearInterval(timer);
+        }, [isPlaying, isFinished, phase, slow, fast, finder, nums]);
+
+        // --- 渲染逻辑 ---
+        const graphNodes = useMemo(() => getGraphLayout(nums, 300, 300), [nums]);
+
+        const getNodeColor = (idx) => {
+            if (isFinished && idx === slow) return "bg-green-500 text-white border-green-600 scale-110 shadow-lg"; // Found
+
+            // Pointers
+            const hasSlow = idx === slow;
+            const hasFast = idx === fast && phase === 'intersection';
+            const hasFinder = idx === finder && phase === 'entrance';
+
+            if (hasFinder && hasSlow) return "bg-purple-500 text-white border-purple-600"; // Meeting
+            if (hasFinder) return "bg-blue-500 text-white border-blue-600";
+            if (hasSlow && hasFast) return "bg-yellow-500 text-white border-yellow-600"; // Meet in phase 1
+            if (hasSlow) return "bg-green-500 text-white border-green-600";
+            if (hasFast) return "bg-red-500 text-white border-red-600";
+
+            return "bg-white text-slate-700 border-slate-300";
+        };
+
+        return (
+            <div className="max-w-4xl mx-auto p-4 sm:p-6">
+                {/* 1. 顶部配置 */}
+                <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4 mb-6">
+                    <div className="flex items-center gap-2 mb-3 text-slate-700 font-bold">
+                        <Icons.Settings />
+                        <span>数据配置</span>
+                    </div>
+                    <div className="flex flex-col sm:flex-row gap-3">
+                        <input
+                            type="text"
+                            value={inputStr}
+                            onChange={(e) => setInputStr(e.target.value)}
+                            className="flex-1 border border-slate-300 rounded-lg px-3 py-2 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                            placeholder="1, 3, 4, 2, 2"
+                        />
+                        <div className="flex gap-2">
+                            <button onClick={loadInput} className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition font-medium text-sm">
+                                加载
+                            </button>
+                            <button onClick={randomInput} className="px-3 py-2 bg-slate-100 text-slate-600 rounded-lg hover:bg-slate-200 transition" title="随机生成">
+                                <Icons.Shuffle />
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                {/* 2. 主体区 */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+
+                    {/* 左侧：数组视图 & 指针信息 */}
+                    <div className="bg-white rounded-xl shadow-lg border border-slate-200 overflow-hidden flex flex-col">
+                        <div className="border-b border-slate-100 bg-slate-50 p-4">
+                            <h1 className="text-xl font-bold text-slate-800">寻找重复数</h1>
+                            <p className="text-xs text-slate-500 mt-1">Floyd 判圈算法 (快慢指针) · O(N)</p>
+                        </div>
+
+                        <div className="p-6 flex-1 flex flex-col items-center justify-center gap-8">
+
+                            {/* Pointers Legend */}
+                            <div className="flex gap-4 text-xs font-bold bg-slate-50 p-2 rounded-lg">
+                                <div className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-green-500"></span> Slow (x1)</div>
+                                <div className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-500"></span> Fast (x2)</div>
+                                {phase === 'entrance' && <div className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-blue-500"></span> Finder</div>}
+                            </div>
+
+                            {/* Array View */}
+                            <div className="flex flex-wrap justify-center gap-2">
+                                {nums.map((val, idx) => {
+                                    const isSlow = idx === slow;
+                                    const isFast = idx === fast && phase === 'intersection';
+                                    const isFinder = idx === finder && phase === 'entrance';
+
+                                    return (
+                                        <div key={idx} className="flex flex-col items-center relative">
+                                            {/* Pointer Markers Top */}
+                                            <div className="h-4 w-full flex justify-center mb-1">
+                                                {isSlow && <div className="w-2 h-2 bg-green-500 rounded-full pointer-transition"></div>}
+                                                {isFast && <div className="w-2 h-2 bg-red-500 rounded-full pointer-transition ml-1"></div>}
+                                                {isFinder && <div className="w-2 h-2 bg-blue-500 rounded-full pointer-transition ml-1"></div>}
+                                            </div>
+
+                                            <div className={`w-10 h-10 flex items-center justify-center border rounded font-mono font-bold transition-all duration-300
+                                                ${(isSlow || isFast || isFinder) ? 'border-purple-400 bg-purple-50 text-purple-900' : 'bg-white border-slate-300 text-slate-500'}
+                                            `}>
+                                                {val}
+                                            </div>
+                                            <span className="text-[10px] text-slate-400 mt-1">{idx}</span>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+
+                            {/* Status Text */}
+                            <div className={`text-center font-medium transition-colors ${msgColor}`}>
+                                {message}
+                            </div>
+                        </div>
+
+                        {/* Controls */}
+                        <div className="border-t border-slate-100 p-4 bg-white">
+                            <div className="flex items-center justify-center gap-2">
+                                <button onClick={() => setIsPlaying(!isPlaying)} disabled={isFinished} className={`flex items-center gap-2 px-4 py-2 rounded-lg text-white font-medium transition ${isPlaying ? 'bg-slate-500 hover:bg-slate-600' : 'bg-purple-600 hover:bg-purple-700'} disabled:opacity-50`}>
+                                    {isPlaying ? <Icons.Pause /> : <Icons.Play />}
+                                    <span className="hidden sm:inline">{isPlaying ? "暂停" : "运行"}</span>
+                                </button>
+                                <button onClick={stepForward} disabled={isPlaying || isFinished} className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 font-medium transition disabled:opacity-50">
+                                    <Icons.Step />
+                                    <span className="hidden sm:inline">单步</span>
+                                </button>
+                                <button onClick={() => reset()} className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition" title="重置">
+                                    <Icons.Reset />
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* 右侧：图视图 (核心理解) */}
+                    <div className="bg-white rounded-xl shadow-lg border border-slate-200 overflow-hidden flex flex-col">
+                        <div className="border-b border-slate-100 bg-slate-50 p-4">
+                            <h2 className="font-bold text-slate-700">链表映射视图 (Index -> Value)</h2>
+                            <p className="text-[10px] text-slate-400">节点代表索引，连线代表 nums[i]</p>
+                        </div>
+                        <div className="flex-1 flex items-center justify-center p-4 relative min-h-[300px] bg-slate-50/50">
+                            <svg className="absolute inset-0 w-full h-full pointer-events-none" viewBox="0 0 300 300">
+                                <defs>
+                                    <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="28" refY="3.5" orient="auto">
+                                        <polygon points="0 0, 10 3.5, 0 7" fill="#cbd5e1" />
+                                    </marker>
+                                </defs>
+                                {graphNodes.map((node) => {
+                                    // 目标节点（即 next 指针指向的节点）
+                                    // nums[node.idx] 是值，这个值也是下一个节点的索引
+                                    const targetIdx = node.val;
+                                    // 安全检查，防止非法跳转
+                                    if (targetIdx >= graphNodes.length) return null;
+
+                                    const targetNode = graphNodes[targetIdx];
+                                    return (
+                                        <line
+                                            key={node.idx}
+                                            x1={node.x} y1={node.y}
+                                            x2={targetNode.x} y2={targetNode.y}
+                                            stroke="#cbd5e1"
+                                            strokeWidth="2"
+                                            markerEnd="url(#arrowhead)"
+                                            className="edge-path"
+                                        />
+                                    );
+                                })}
+                            </svg>
+
+                            {graphNodes.map((node) => (
+                                <div
+                                    key={node.idx}
+                                    className={`absolute w-10 h-10 rounded-full border-2 flex items-center justify-center font-bold text-sm shadow-md transition-all duration-300 z-10 ${getNodeColor(node.idx)}`}
+                                    style={{ left: node.x - 20, top: node.y - 20 }}
+                                >
+                                    {node.idx}
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        );
+    };
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+</script>
+</body>
+</html>

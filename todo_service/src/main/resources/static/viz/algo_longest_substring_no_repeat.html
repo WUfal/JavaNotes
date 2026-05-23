@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>无重复字符的最长子串 - 算法可视化</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <style>
+        body { background-color: #f8fafc; font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; }
+        .cell-transition { transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+    </style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel">
+    const { useState, useEffect, useRef } = React;
+
+    // --- 图标组件 ---
+    const Icons = {
+        Play: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>,
+        Pause: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>,
+        Step: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>,
+        Reset: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 12" /><path d="M3 3v9h9" /></svg>,
+        Settings: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>,
+        Shuffle: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="16 3 21 3 21 8"></polyline><line x1="4" y1="20" x2="21" y2="3"></line><polyline points="21 16 21 21 16 21"></polyline><line x1="15" y1="15" x2="21" y2="21"></line><line x1="4" y1="4" x2="9" y2="9"></line></svg>
+    };
+
+    const App = () => {
+        // --- 状态定义 ---
+        const [inputStr, setInputStr] = useState("abcabcbb");
+        const [activeStr, setActiveStr] = useState("abcabcbb"); // 实际运行的字符串
+        const [mode, setMode] = useState("sliding"); // 'brute' | 'sliding'
+
+        // 运行状态
+        const [isPlaying, setIsPlaying] = useState(false);
+        const [isFinished, setIsFinished] = useState(false);
+        const [message, setMessage] = useState("准备就绪");
+
+        // 算法变量
+        // 通用
+        const [maxLen, setMaxLen] = useState(0);
+        const [currentWindow, setCurrentWindow] = useState({ start: 0, end: 0 }); // 用于高亮窗口
+
+        // 暴力法状态
+        const [bruteI, setBruteI] = useState(0);
+        const [bruteJ, setBruteJ] = useState(0);
+
+        // 滑动窗口状态
+        const [left, setLeft] = useState(0);
+        const [right, setRight] = useState(0);
+        const [windowSet, setWindowSet] = useState(new Set());
+
+        // --- 辅助函数 ---
+        const reset = (newStr = activeStr) => {
+            setIsPlaying(false);
+            setIsFinished(false);
+            setMaxLen(0);
+            setCurrentWindow({ start: -1, end: -1 });
+            setMessage("状态已重置");
+
+            // Brute Reset
+            setBruteI(0);
+            setBruteJ(0);
+
+            // Sliding Reset
+            setLeft(0);
+            setRight(0);
+            setWindowSet(new Set());
+        };
+
+        const loadInput = () => {
+            if (!inputStr) return;
+            setActiveStr(inputStr);
+            reset(inputStr);
+            setMessage(`已加载新数据: "${inputStr}"`);
+        };
+
+        const randomInput = () => {
+            const chars = "abcde";
+            let res = "";
+            const len = 8 + Math.floor(Math.random() * 5);
+            for(let i=0; i<len; i++) {
+                res += chars[Math.floor(Math.random() * chars.length)];
+            }
+            setInputStr(res);
+            setActiveStr(res);
+            reset(res);
+            setMessage(`已生成随机数据: "${res}"`);
+        };
+
+        // --- 自动播放逻辑 ---
+        useEffect(() => {
+            let timer;
+            if (isPlaying && !isFinished) {
+                timer = setInterval(() => {
+                    stepForward();
+                }, 800);
+            }
+            return () => clearInterval(timer);
+        }, [isPlaying, isFinished, mode, bruteI, bruteJ, left, right, windowSet]);
+
+        // --- 核心算法步骤 ---
+        const stepForward = () => {
+            if (isFinished) return;
+
+            if (mode === 'brute') {
+                stepBrute();
+            } else {
+                stepSliding();
+            }
+        };
+
+        // 1. 暴力法 O(N^3) 逻辑简化演示
+        // 实际上为了演示方便，我们展示 O(N^2) 的检查过程
+        const stepBrute = () => {
+            let i = bruteI;
+            let j = bruteJ;
+
+            // 边界检查
+            if (i >= activeStr.length) {
+                setIsFinished(true);
+                setIsPlaying(false);
+                setMessage(`遍历结束。最长子串长度为: ${maxLen}`);
+                return;
+            }
+
+            const subStr = activeStr.substring(i, j + 1);
+            setCurrentWindow({ start: i, end: j });
+
+            // 检查 subStr 是否有重复
+            const hasDuplicate = (s) => new Set(s).size !== s.length;
+
+            if (!hasDuplicate(subStr)) {
+                // 无重复
+                const len = subStr.length;
+                let msg = `检查子串 "${subStr}" ([${i},${j}]) -> 无重复。`;
+                if (len > maxLen) {
+                    setMaxLen(len);
+                    msg += ` 更新最大长度为 ${len}。`;
+                }
+                setMessage(msg);
+
+                // 移动 J
+                let nextJ = j + 1;
+                if (nextJ >= activeStr.length) {
+                    // J 到头了，I 进一位，J 重置为 I
+                    setBruteI(i + 1);
+                    setBruteJ(i + 1);
+                } else {
+                    setBruteJ(nextJ);
+                }
+            } else {
+                // 有重复，当前 i 开头的这轮 j 没必要继续下去了(或者简单暴力继续也行，这里选择继续遍历以展示完整暴力)
+                setMessage(`检查子串 "${subStr}" ([${i},${j}]) -> ❌ 发现重复。`);
+
+                let nextJ = j + 1;
+                if (nextJ >= activeStr.length) {
+                    setBruteI(i + 1);
+                    setBruteJ(i + 1);
+                } else {
+                    setBruteJ(nextJ);
+                }
+            }
+        };
+
+        // 2. 滑动窗口 O(N) 逻辑
+        const stepSliding = () => {
+            let l = left;
+            let r = right;
+            const newSet = new Set(windowSet);
+
+            if (r >= activeStr.length) {
+                setIsFinished(true);
+                setIsPlaying(false);
+                setMessage(`遍历结束。最长子串长度为: ${maxLen}`);
+                setCurrentWindow({ start: l, end: r - 1 });
+                return;
+            }
+
+            const char = activeStr[r];
+
+            // 核心逻辑
+            if (!newSet.has(char)) {
+                // 没有重复，扩展窗口
+                newSet.add(char);
+                setWindowSet(newSet);
+                const currentLen = r - l + 1;
+
+                let msg = `窗口右移。字符 '${char}' 不在窗口内。加入集合。`;
+                if (currentLen > maxLen) {
+                    setMaxLen(currentLen);
+                    msg += ` 更新最大长度: ${currentLen}`;
+                }
+                setMessage(msg);
+
+                setCurrentWindow({ start: l, end: r });
+                setRight(r + 1);
+            } else {
+                // 有重复，缩小窗口
+                // 从左边移除字符，直到重复的那个字符被移出去
+                const removeChar = activeStr[l];
+                newSet.delete(removeChar);
+                setWindowSet(newSet);
+
+                setMessage(`字符 '${char}' 已存在！窗口左缩。移除 '${removeChar}'。`);
+
+                setLeft(l + 1);
+                // 注意：Right 不动，下一轮再次检查当前 Right 的字符
+                setCurrentWindow({ start: l + 1, end: r - 1 });
+            }
+        };
+
+        // --- 渲染逻辑 ---
+        const getCellClass = (index) => {
+            let base = "w-10 h-10 flex items-center justify-center border rounded font-mono text-lg font-bold relative cell-transition ";
+
+            // 基础样式
+            if (index >= currentWindow.start && index <= currentWindow.end) {
+                base += "bg-blue-100 border-blue-400 text-blue-800 ";
+            } else {
+                base += "bg-white border-slate-200 text-slate-400 ";
+            }
+
+            // 指针标记
+            if (mode === 'sliding') {
+                if (index === left) base += "ring-2 ring-red-400 ring-offset-1 "; // 左指针
+                if (index === right && !isFinished) base += "bg-yellow-200 "; // 当前正在考察的右指针位置
+            } else {
+                if (index === bruteI) base += "ring-2 ring-red-400 ring-offset-1 ";
+                if (index === bruteJ) base += "bg-yellow-200 ";
+            }
+
+            return base;
+        };
+
+        return (
+            <div className="max-w-3xl mx-auto p-6">
+                {/* 1. 顶部：输入配置区 */}
+                <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4 mb-6">
+                    <div className="flex items-center gap-2 mb-3 text-slate-700 font-bold">
+                        <Icons.Settings />
+                        <span>数据配置</span>
+                    </div>
+                    <div className="flex flex-col sm:flex-row gap-3">
+                        <input
+                            type="text"
+                            value={inputStr}
+                            onChange={(e) => setInputStr(e.target.value)}
+                            className="flex-1 border border-slate-300 rounded-lg px-3 py-2 font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            placeholder="输入字符串..."
+                        />
+                        <div className="flex gap-2">
+                            <button onClick={loadInput} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-medium text-sm">
+                                加载
+                            </button>
+                            <button onClick={randomInput} className="px-3 py-2 bg-slate-100 text-slate-600 rounded-lg hover:bg-slate-200 transition" title="随机生成">
+                                <Icons.Shuffle />
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                {/* 2. 算法控制区 */}
+                <div className="bg-white rounded-xl shadow-lg border border-slate-200 overflow-hidden">
+                    {/* Header: Title & Tabs */}
+                    <div className="border-b border-slate-100 bg-slate-50 p-4 flex flex-col sm:flex-row justify-between items-center gap-4">
+                        <div>
+                            <h1 className="text-xl font-bold text-slate-800">无重复字符的最长子串</h1>
+                            <p className="text-xs text-slate-500 mt-1">寻找字符串中不含重复字符的最长子串长度。</p>
+                        </div>
+                        <div className="flex bg-slate-200 p-1 rounded-lg">
+                            <button
+                                onClick={() => { setMode('brute'); reset(); }}
+                                className={`px-3 py-1.5 text-sm rounded-md transition-all font-medium ${mode === 'brute' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                            >
+                                暴力枚举 O(N³)
+                            </button>
+                            <button
+                                onClick={() => { setMode('sliding'); reset(); }}
+                                className={`px-3 py-1.5 text-sm rounded-md transition-all font-medium ${mode === 'sliding' ? 'bg-white text-green-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                            >
+                                滑动窗口 O(N)
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Visualization Canvas */}
+                    <div className="p-8 flex flex-col items-center justify-center bg-slate-50 min-h-[200px]">
+                        {/* Result Display */}
+                        <div className="mb-8 flex flex-col items-center">
+                            <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Max Length</div>
+                            <div className="text-4xl font-black text-slate-800">{maxLen}</div>
+                        </div>
+
+                        {/* String Array */}
+                        <div className="flex flex-wrap justify-center gap-2 mb-4">
+                            {activeStr.split('').map((char, idx) => (
+                                <div key={idx} className="flex flex-col items-center">
+                                    <div className={getCellClass(idx)}>
+                                        {char}
+                                        {/* Labels */}
+                                        {mode === 'sliding' && idx === left && <div className="absolute -top-6 text-[10px] font-bold text-red-500">L</div>}
+                                        {mode === 'sliding' && idx === right && !isFinished && <div className="absolute -top-6 text-[10px] font-bold text-yellow-600">R</div>}
+                                        {mode === 'brute' && idx === bruteI && <div className="absolute -top-6 text-[10px] font-bold text-red-500">I</div>}
+                                        {mode === 'brute' && idx === bruteJ && <div className="absolute -top-6 text-[10px] font-bold text-yellow-600">J</div>}
+                                    </div>
+                                    <div className="text-[10px] text-slate-300 mt-1 font-mono">{idx}</div>
+                                </div>
+                            ))}
+                        </div>
+
+                        {/* Set Visualization (Only for Sliding Window) */}
+                        {mode === 'sliding' && (
+                            <div className="mt-4 p-3 bg-white rounded-lg border border-slate-200 w-full max-w-md">
+                                <div className="text-xs text-slate-400 font-bold mb-2 flex items-center gap-2">
+                                    <span className="w-2 h-2 rounded-full bg-green-500"></span>
+                                    HashSet (当前窗口内的字符)
+                                </div>
+                                <div className="flex flex-wrap gap-2">
+                                    {Array.from(windowSet).length === 0 ? <span className="text-slate-300 text-sm italic">Empty</span> :
+                                        Array.from(windowSet).map((c, i) => (
+                                            <span key={i} className="px-2 py-1 bg-green-50 text-green-700 border border-green-200 rounded text-sm font-mono font-bold animate-in">
+                                                    {c}
+                                                </span>
+                                        ))
+                                    }
+                                </div>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Controls & Explanation */}
+                    <div className="border-t border-slate-100 p-4 bg-white">
+                        <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+                            {/* Message */}
+                            <div className="flex-1 bg-blue-50 text-blue-800 px-4 py-3 rounded-lg text-sm border-l-4 border-blue-500 w-full sm:w-auto">
+                                {message}
+                            </div>
+
+                            {/* Buttons */}
+                            <div className="flex items-center gap-2">
+                                <button onClick={() => setIsPlaying(!isPlaying)} disabled={isFinished} className={`flex items-center gap-2 px-4 py-2 rounded-lg text-white font-medium transition ${isPlaying ? 'bg-red-500 hover:bg-red-600' : 'bg-blue-600 hover:bg-blue-700'} disabled:opacity-50`}>
+                                    {isPlaying ? <Icons.Pause /> : <Icons.Play />}
+                                    <span className="hidden sm:inline">{isPlaying ? "暂停" : "自动"}</span>
+                                </button>
+                                <button onClick={stepForward} disabled={isPlaying || isFinished} className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 font-medium transition disabled:opacity-50">
+                                    <Icons.Step />
+                                    <span className="hidden sm:inline">单步</span>
+                                </button>
+                                <button onClick={() => reset()} className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition">
+                                    <Icons.Reset />
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        );
+    };
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+</script>
+</body>
+</html>

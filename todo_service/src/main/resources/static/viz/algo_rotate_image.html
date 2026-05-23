@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>旋转图像 - 算法可视化</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <style>
+        body { background-color: #f8fafc; font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; }
+        .cell-transition { transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1); }
+        .fade-in { animation: fadeIn 0.5s ease-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: scale(0.9); } to { opacity: 1; transform: scale(1); } }
+
+        /* 交换时的强调动画 */
+        .swapping { animation: popScale 0.4s ease-in-out; }
+        @keyframes popScale {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.15); box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+            100% { transform: scale(1); }
+        }
+    </style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel">
+    const { useState, useEffect, useRef } = React;
+
+    // --- 图标组件 ---
+    const Icons = {
+        Play: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>,
+        Pause: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>,
+        Step: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>,
+        Reset: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 12" /><path d="M3 3v9h9" /></svg>,
+        Settings: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>,
+        Shuffle: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="16 3 21 3 21 8"></polyline><line x1="4" y1="20" x2="21" y2="3"></line><polyline points="21 16 21 21 16 21"></polyline><line x1="15" y1="15" x2="21" y2="21"></line><line x1="4" y1="4" x2="9" y2="9"></line></svg>
+    };
+
+    const App = () => {
+        // --- 状态定义 ---
+        const [sizeInput, setSizeInput] = useState("3"); // N
+
+        // 核心数据
+        const [matrix, setMatrix] = useState([]);
+        const [n, setN] = useState(3);
+
+        // 算法状态
+        const [phase, setPhase] = useState("start"); // 'start' -> 'transpose' -> 'prepare_reverse' -> 'reverse' -> 'done'
+
+        // Transpose Pointers
+        const [transI, setTransI] = useState(0); // row
+        const [transJ, setTransJ] = useState(1); // col (starts at i+1)
+
+        // Reverse Pointers
+        const [revRow, setRevRow] = useState(0); // current row being reversed
+        const [revL, setRevL] = useState(0);     // left ptr
+        const [revR, setRevR] = useState(2);     // right ptr
+
+        // 运行控制
+        const [isPlaying, setIsPlaying] = useState(false);
+        const [isFinished, setIsFinished] = useState(false);
+        const [message, setMessage] = useState("准备就绪");
+        const [msgColor, setMsgColor] = useState("text-slate-600");
+
+        // 高亮
+        const [activeSwap, setActiveSwap] = useState([]); // [[r1,c1], [r2,c2]]
+
+        const timerRef = useRef(null);
+
+        // --- 初始化 ---
+        const generateMatrix = (size) => {
+            const mat = [];
+            let count = 1;
+            for(let i=0; i<size; i++) {
+                const row = [];
+                for(let j=0; j<size; j++) {
+                    row.push(count++);
+                }
+                mat.push(row);
+            }
+            return mat;
+        };
+
+        const reset = (size = n) => {
+            setIsPlaying(false);
+            setIsFinished(false);
+
+            const newMat = generateMatrix(size);
+            setMatrix(newMat);
+            setN(size);
+
+            // Transpose init
+            setTransI(0);
+            setTransJ(1);
+
+            // Reverse init
+            setRevRow(0);
+            setRevL(0);
+            setRevR(size - 1);
+
+            setPhase("start");
+            setActiveSwap([]);
+            setMessage("准备就绪。两个步骤：1. 转置 (Transpose) 2. 翻转 (Reverse)");
+            setMsgColor("text-slate-600");
+
+            if (timerRef.current) clearInterval(timerRef.current);
+        };
+
+        const loadInput = () => {
+            const size = parseInt(sizeInput);
+            if (isNaN(size) || size < 2 || size > 6) {
+                alert("请输入 2 到 6 之间的整数 N");
+                return;
+            }
+            setN(size);
+            reset(size);
+        };
+
+        useEffect(() => {
+            reset(3); // Default N=3
+        }, []);
+
+        // --- 核心算法逻辑 (Step) ---
+        const stepForward = () => {
+            if (isFinished) return;
+
+            const nextMat = matrix.map(row => [...row]);
+
+            // Phase 0: Start -> Transpose
+            if (phase === 'start') {
+                setPhase('transpose');
+                setTransI(0);
+                setTransJ(1);
+                setMessage("第一步：转置 (Transpose)。交换对角线两侧的元素。");
+                return;
+            }
+
+            // Phase 1: Transpose
+            if (phase === 'transpose') {
+                if (transI >= n) {
+                    setPhase('prepare_reverse');
+                    setActiveSwap([]);
+                    setMessage("转置完成！准备第二步：水平翻转 (Reverse)。");
+                    return;
+                }
+
+                if (transJ < n) {
+                    // Perform Swap
+                    const temp = nextMat[transI][transJ];
+                    nextMat[transI][transJ] = nextMat[transJ][transI];
+                    nextMat[transJ][transI] = temp;
+
+                    setMatrix(nextMat);
+                    setActiveSwap([[transI, transJ], [transJ, transI]]);
+                    setMessage(`交换 matrix[${transI}][${transJ}] 和 matrix[${transJ}][${transI}]`);
+
+                    // Move J
+                    let nextJ = transJ + 1;
+                    let nextI = transI;
+                    if (nextJ >= n) {
+                        nextI++;
+                        nextJ = nextI + 1;
+                    }
+                    setTransI(nextI);
+                    setTransJ(nextJ);
+                } else {
+                    // Should be caught by nextI logic, but safety check
+                    setTransI(n); // finish
+                }
+                return;
+            }
+
+            // Phase 2: Prepare Reverse
+            if (phase === 'prepare_reverse') {
+                setPhase('reverse');
+                setRevRow(0);
+                setRevL(0);
+                setRevR(n - 1);
+                setMessage("开始逐行水平翻转...");
+                return;
+            }
+
+            // Phase 3: Reverse Rows
+            if (phase === 'reverse') {
+                if (revRow >= n) {
+                    setIsFinished(true);
+                    setIsPlaying(false);
+                    setActiveSwap([]);
+                    setMessage("旋转完成！图像顺时针旋转了 90 度。");
+                    setMsgColor("text-green-600");
+                    return;
+                }
+
+                if (revL < revR) {
+                    // Swap L and R
+                    const temp = nextMat[revRow][revL];
+                    nextMat[revRow][revL] = nextMat[revRow][revR];
+                    nextMat[revRow][revR] = temp;
+
+                    setMatrix(nextMat);
+                    setActiveSwap([[revRow, revL], [revRow, revR]]);
+                    setMessage(`第 ${revRow} 行：交换左右元素 [${revRow}, ${revL}] 和 [${revRow}, ${revR}]`);
+
+                    setRevL(revL + 1);
+                    setRevR(revR - 1);
+                } else {
+                    // Next Row
+                    setRevRow(revRow + 1);
+                    setRevL(0);
+                    setRevR(n - 1);
+                    setActiveSwap([]);
+                    // Optional: Skip a frame to show row finished, or just continue
+                    // To make it smooth, let's just setMessage
+                    setMessage(`第 ${revRow} 行翻转完毕，进入下一行。`);
+                }
+                return;
+            }
+        };
+
+        // --- 自动播放 ---
+        useEffect(() => {
+            if (isPlaying && !isFinished) {
+                timerRef.current = setInterval(() => {
+                    stepForward();
+                }, 800);
+            }
+            return () => clearInterval(timerRef.current);
+        }, [isPlaying, isFinished, phase, transI, transJ, revRow, revL, revR, matrix, n]);
+
+        // --- 渲染辅助 ---
+
+        const getCellClass = (r, c) => {
+            let base = "w-12 h-12 sm:w-16 sm:h-16 flex items-center justify-center border rounded-lg font-bold text-lg sm:text-xl relative cell-transition ";
+
+            // 基础颜色
+            base += "bg-white border-slate-200 text-slate-700 ";
+
+            // 正在交换的高亮
+            const isSwapping = activeSwap.some(pos => pos[0] === r && pos[1] === c);
+            if (isSwapping) {
+                base += "bg-rose-100 border-rose-500 text-rose-600 swapping z-20 shadow-lg ";
+            }
+
+            // 对角线高亮 (在转置阶段)
+            if (phase === 'transpose' && r === c) {
+                base += "bg-slate-100 border-slate-300 text-slate-400 ";
+            }
+
+            // 完成后的效果
+            if (isFinished) {
+                base += "bg-green-50 border-green-200 text-green-700 ";
+            }
+
+            return base;
+        };
+
+        return (
+            <div className="max-w-4xl mx-auto p-4 sm:p-6">
+                {/* 1. 顶部配置 */}
+                <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4 mb-6">
+                    <div className="flex items-center gap-2 mb-3 text-slate-700 font-bold">
+                        <Icons.Settings />
+                        <span>数据配置</span>
+                    </div>
+                    <div className="flex flex-col sm:flex-row gap-3 items-center">
+                        <label className="text-sm font-bold text-slate-500 uppercase mr-2">矩阵大小 N:</label>
+                        <input
+                            type="number"
+                            min="2" max="6"
+                            value={sizeInput}
+                            onChange={(e) => setSizeInput(e.target.value)}
+                            className="w-20 border border-slate-300 rounded-lg px-3 py-2 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-rose-500"
+                        />
+                        <div className="flex-1"></div>
+                        <button onClick={loadInput} className="px-4 py-2 bg-rose-600 text-white rounded-lg hover:bg-rose-700 transition font-medium text-sm">
+                            重置 / 生成
+                        </button>
+                    </div>
+                </div>
+
+                {/* 2. 主体区 */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+
+                    {/* 左侧：矩阵可视化 */}
+                    <div className="bg-white rounded-xl shadow-lg border border-slate-200 overflow-hidden flex flex-col items-center justify-center p-8 min-h-[400px]">
+
+                        {/* 状态标签 */}
+                        <div className="mb-6 flex gap-4">
+                            <span className={`px-3 py-1 rounded-full text-xs font-bold transition-colors ${phase === 'transpose' ? 'bg-rose-100 text-rose-700' : 'bg-slate-100 text-slate-400'}`}>1. Transpose</span>
+                            <span className={`px-3 py-1 rounded-full text-xs font-bold transition-colors ${phase === 'reverse' ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-400'}`}>2. Reverse</span>
+                        </div>
+
+                        <div className="grid gap-2 fade-in" style={{ gridTemplateColumns: `repeat(${n}, minmax(0, 1fr))` }}>
+                            {matrix.map((row, r) => (
+                                row.map((val, c) => (
+                                    <div key={`${r}-${c}`} className={getCellClass(r, c)}>
+                                        {val}
+                                        {/* Coordinates hint (optional) */}
+                                        <span className="absolute bottom-1 right-1 text-[8px] text-slate-300 font-mono opacity-50">{r},{c}</span>
+                                    </div>
+                                ))
+                            ))}
+                        </div>
+                    </div>
+
+                    {/* 右侧：说明与控制 */}
+                    <div className="flex flex-col gap-6">
+
+                        {/* 解释卡片 */}
+                        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 flex-1">
+                            <h3 className="font-bold text-slate-700 mb-4 border-b pb-2">算法图解</h3>
+                            <div className="space-y-4 text-sm text-slate-600">
+                                <div className={`p-3 rounded-lg border transition-all ${phase === 'transpose' ? 'bg-rose-50 border-rose-200 shadow-sm' : 'border-transparent'}`}>
+                                    <div className="font-bold text-rose-700 mb-1">Step 1: 转置 (Transpose)</div>
+                                    <p>沿主对角线交换元素：</p>
+                                    <code className="block bg-white/50 p-1 rounded mt-1 font-mono text-xs">matrix[i][j] ↔ matrix[j][i]</code>
+                                </div>
+                                <div className="flex justify-center text-slate-300">↓</div>
+                                <div className={`p-3 rounded-lg border transition-all ${phase === 'reverse' ? 'bg-indigo-50 border-indigo-200 shadow-sm' : 'border-transparent'}`}>
+                                    <div className="font-bold text-indigo-700 mb-1">Step 2: 翻转 (Reverse)</div>
+                                    <p>水平翻转每一行：</p>
+                                    <code className="block bg-white/50 p-1 rounded mt-1 font-mono text-xs">row.reverse()</code>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Controls */}
+                        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4">
+                            <div className="flex flex-col gap-3">
+                                <div className={`px-4 py-3 rounded-lg text-sm border-l-4 transition-colors bg-slate-50 border-slate-400 ${msgColor.replace('text-', 'border-').replace('600', '500')}`}>
+                                    <span className={msgColor}>{message}</span>
+                                </div>
+
+                                <div className="flex items-center justify-center gap-2">
+                                    <button onClick={() => setIsPlaying(!isPlaying)} disabled={isFinished} className={`flex items-center gap-2 px-4 py-2 rounded-lg text-white font-medium transition ${isPlaying ? 'bg-slate-500 hover:bg-slate-600' : 'bg-rose-600 hover:bg-rose-700'} disabled:opacity-50`}>
+                                        {isPlaying ? <Icons.Pause /> : <Icons.Play />}
+                                        <span className="hidden sm:inline">{isPlaying ? "暂停" : "运行"}</span>
+                                    </button>
+                                    <button onClick={stepForward} disabled={isPlaying || isFinished} className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 font-medium transition disabled:opacity-50">
+                                        <Icons.Step />
+                                        <span className="hidden sm:inline">单步</span>
+                                    </button>
+                                    <button onClick={() => reset()} className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition" title="重置">
+                                        <Icons.Reset />
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        );
+    };
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+</script>
+</body>
+</html>

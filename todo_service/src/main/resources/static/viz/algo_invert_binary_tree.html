@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>算法可视化：翻转二叉树</title>
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- React & ReactDOM -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+
+    <!-- Babel for JSX -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <!-- Custom Styles -->
+    <style>
+        body {
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+        }
+        .smooth-transition {
+            transition: all 0.8s cubic-bezier(0.34, 1.56, 0.64, 1); /* 动画放慢 */
+        }
+
+        /* 连线 SVG 动画 */
+        .line-transition {
+            transition: d 0.8s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+
+        /* 队列进入动画 */
+        @keyframes slideInRight {
+            from { opacity: 0; transform: translateX(20px); }
+            to { opacity: 1; transform: translateX(0); }
+        }
+        .queue-item-enter {
+            animation: slideInRight 0.3s ease-out forwards;
+        }
+
+        /* 滚动条美化 */
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #f1f5f9; } /* slate-100 */
+        ::-webkit-scrollbar-thumb { background: #10b981; border-radius: 4px; } /* emerald-500 */
+        ::-webkit-scrollbar-thumb:hover { background: #059669; }
+    </style>
+</head>
+<body class="text-slate-800">
+<div id="root"></div>
+
+<script type="text/babel">
+    const { useState, useEffect, useRef, useMemo } = React;
+
+    // --- 图标组件 ---
+    const Icons = {
+        Play: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>,
+        Pause: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>,
+        Step: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="5 4 15 12 5 20 5 4"></polygon><line x1="19" y1="5" x2="19" y2="19"></line></svg>,
+        Refresh: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M23 4v6h-6"></path><path d="M1 20v-6h6"></path><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>,
+        Random: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="2" width="20" height="20" rx="5" ry="5"></rect><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"></path><line x1="17.5" y1="6.5" x2="17.51" y2="6.5"></line></svg>,
+        Swap: () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M7 16V4M7 4L3 8M7 4L11 8M17 8v12M17 20l4-4M17 20l-4-4"></path></svg>
+    };
+
+    // --- 树节点类 ---
+    class TreeNode {
+        constructor(val, id) {
+            this.val = val;
+            this.id = id;
+            this.left = null;
+            this.right = null;
+            this.x = 0;
+            this.y = 0;
+        }
+    }
+
+    // --- 辅助函数：构建树 ---
+    const buildTree = (arr) => {
+        if (!arr || arr.length === 0) return null;
+
+        const root = new TreeNode(arr[0], `node-0-${Date.now()}`);
+        const queue = [root];
+        let i = 1;
+
+        while (i < arr.length) {
+            const curr = queue.shift();
+
+            if (i < arr.length && arr[i] !== null) {
+                curr.left = new TreeNode(arr[i], `node-${i}-${Date.now()}`);
+                queue.push(curr.left);
+            }
+            i++;
+
+            if (i < arr.length && arr[i] !== null) {
+                curr.right = new TreeNode(arr[i], `node-${i}-${Date.now()}`);
+                queue.push(curr.right);
+            }
+            i++;
+        }
+        return root;
+    };
+
+    // --- 辅助函数：计算坐标 ---
+    const calculatePositions = (node, depth = 0, x = 50, layerGap = 80) => {
+        if (!node) return;
+        const spread = 25 / Math.pow(2, depth);
+        node.y = depth * layerGap + 40;
+        node.x = x;
+        if (node.left) calculatePositions(node.left, depth + 1, x - spread, layerGap);
+        if (node.right) calculatePositions(node.right, depth + 1, x + spread, layerGap);
+    };
+
+    const cloneTree = (node) => {
+        if (!node) return null;
+        const newNode = new TreeNode(node.val, node.id);
+        newNode.x = node.x;
+        newNode.y = node.y;
+        newNode.left = cloneTree(node.left);
+        newNode.right = cloneTree(node.right);
+        return newNode;
+    };
+
+    const flattenTree = (root) => {
+        const nodes = [];
+        const links = [];
+        if (!root) return { nodes, links };
+
+        const traverse = (node) => {
+            if (!node) return;
+            nodes.push(node);
+            if (node.left) {
+                links.push({ from: node, to: node.left });
+                traverse(node.left);
+            }
+            if (node.right) {
+                links.push({ from: node, to: node.right });
+                traverse(node.right);
+            }
+        };
+        traverse(root);
+        return { nodes, links };
+    };
+
+    // --- 主应用组件 ---
+    function App() {
+        const [inputArray, setInputArray] = useState("4, 2, 7, 1, 3, 6, 9");
+
+        const [rootNode, setRootNode] = useState(null);
+        const [processingNodeId, setProcessingNodeId] = useState(null);
+        const [highlightChildren, setHighlightChildren] = useState([]); // 新增：高亮正在交换的子节点
+
+        // 算法控制
+        const [queue, setQueue] = useState([]);
+        const [isPlaying, setIsPlaying] = useState(false);
+        const [isCompleted, setIsCompleted] = useState(false);
+        const [message, setMessage] = useState("准备就绪。使用广度优先搜索 (BFS) 逐层翻转。");
+        const [statusColor, setStatusColor] = useState("text-slate-600");
+
+        const timerRef = useRef(null);
+
+        const initTree = (arrStr) => {
+            const arr = arrStr.split(/[,，\s]+/).map(n => n.trim() === 'null' ? null : parseInt(n)).filter(n => !isNaN(n) || n === null);
+            const root = buildTree(arr);
+            calculatePositions(root);
+            setRootNode(root);
+            setQueue([root]);
+            setProcessingNodeId(null);
+            setHighlightChildren([]);
+            setIsPlaying(false);
+            setIsCompleted(false);
+            setMessage("树已构建。队列初始化为：[" + (root ? root.val : "") + "]");
+            setStatusColor("text-slate-600");
+            if (timerRef.current) clearInterval(timerRef.current);
+        };
+
+        const handleApply = () => initTree(inputArray);
+
+        const handleRandom = () => {
+            const arr = [];
+            const len = 7 + Math.floor(Math.random() * 6);
+            for(let i=0; i<len; i++) arr.push(Math.floor(Math.random() * 99) + 1);
+            const str = arr.join(", ");
+            setInputArray(str);
+            initTree(str);
+        };
+
+        useEffect(() => {
+            initTree(inputArray);
+        }, []);
+
+        const step = () => {
+            if (isCompleted || !rootNode) return;
+
+            if (queue.length === 0) {
+                setIsCompleted(true);
+                setIsPlaying(false);
+                setProcessingNodeId(null);
+                setHighlightChildren([]);
+                setMessage("队列为空，所有节点翻转完成！");
+                setStatusColor("text-emerald-600");
+                return;
+            }
+
+            const currentQueue = [...queue];
+            const currentNodeRef = currentQueue.shift();
+
+            const newRoot = cloneTree(rootNode);
+
+            const findAndInvert = (node, targetId) => {
+                if (!node) return null;
+                if (node.id === targetId) return node;
+                return findAndInvert(node.left, targetId) || findAndInvert(node.right, targetId);
+            };
+
+            const targetNode = findAndInvert(newRoot, currentNodeRef.id);
+
+            if (targetNode) {
+                setProcessingNodeId(targetNode.id);
+
+                // 记录即将被交换的子节点 ID，用于高亮
+                const childrenIds = [];
+                let leftVal = "无";
+                let rightVal = "无";
+
+                if (targetNode.left) {
+                    childrenIds.push(targetNode.left.id);
+                    leftVal = targetNode.left.val;
+                }
+                if (targetNode.right) {
+                    childrenIds.push(targetNode.right.id);
+                    rightVal = targetNode.right.val;
+                }
+                setHighlightChildren(childrenIds);
+
+                let stepMsg = `处理节点 [${targetNode.val}]：交换其左子节点 (${leftVal}) 和右子节点 (${rightVal})。`;
+
+                // 构建入队信息
+                let addedChildren = [];
+                // 逻辑上交换后的左（原右）入队，交换后的右（原左）入队
+                // 为了说明简单，我们说“将子节点加入队列”
+                if (targetNode.right) addedChildren.push(targetNode.right.val); // 原右，现左
+                if (targetNode.left) addedChildren.push(targetNode.left.val); // 原左，现右
+
+                if (childrenIds.length > 0) {
+                    stepMsg += ` 随后整棵子树随之移动。`;
+                } else {
+                    stepMsg += ` (叶子节点无子树)`;
+                }
+
+                setMessage(stepMsg);
+                setStatusColor("text-emerald-600");
+
+                // 真正的交换逻辑
+                const temp = targetNode.left;
+                targetNode.left = targetNode.right;
+                targetNode.right = temp;
+
+                calculatePositions(newRoot);
+
+                // 注意：这里入队的是交换后的左右子节点
+                if (targetNode.left) currentQueue.push(targetNode.left);
+                if (targetNode.right) currentQueue.push(targetNode.right);
+
+                setQueue(currentQueue);
+                setRootNode(newRoot);
+            } else {
+                setQueue(currentQueue);
+            }
+        };
+
+        useEffect(() => {
+            if (isPlaying) {
+                // 放慢速度到 2000ms，让用户看清“全部换了”其实是子树整体移动
+                timerRef.current = setInterval(step, 2000);
+            }
+            return () => clearInterval(timerRef.current);
+        }, [isPlaying, queue, rootNode, isCompleted]);
+
+        const { nodes, links } = useMemo(() => flattenTree(rootNode), [rootNode]);
+
+        return (
+            <div className="min-h-screen flex flex-col items-center py-8 px-4 sm:px-6">
+
+                {/* 1. Header */}
+                <header className="mb-8 text-center space-y-2">
+                    <h1 className="text-3xl font-extrabold text-slate-800 tracking-tight">
+                        算法可视化：<span className="text-emerald-600">翻转二叉树</span>
+                    </h1>
+                    <p className="text-slate-500 text-sm font-medium">
+                        广度优先搜索 (BFS) 层序遍历
+                    </p>
+                </header>
+
+                {/* 2. Config */}
+                <div className="w-full max-w-3xl bg-white rounded-xl shadow-lg border border-emerald-100 p-6 mb-8">
+                    <div className="flex flex-col sm:flex-row gap-4 items-end">
+                        <div className="flex-1 w-full space-y-1">
+                            <label className="text-xs font-semibold text-slate-500 uppercase">树节点数据 (层序遍历)</label>
+                            <input
+                                type="text"
+                                value={inputArray}
+                                onChange={(e) => setInputArray(e.target.value)}
+                                className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none text-slate-700 font-mono text-sm"
+                                placeholder="4, 2, 7, 1, 3, 6, 9"
+                            />
+                        </div>
+                        <div className="flex gap-2 w-full sm:w-auto">
+                            <button onClick={handleApply} className="flex-1 sm:flex-none bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg transition-colors text-sm font-medium">应用</button>
+                            <button onClick={handleRandom} className="flex-1 sm:flex-none bg-white border border-slate-300 hover:bg-emerald-50 text-slate-700 px-4 py-2 rounded-lg transition-colors text-sm font-medium">随机</button>
+                        </div>
+                    </div>
+                </div>
+
+                {/* 3. Visualization Area */}
+                <div className="w-full max-w-3xl mb-8 relative">
+                    <div className="bg-white rounded-xl shadow-sm border border-emerald-100 h-[400px] overflow-hidden relative select-none">
+
+                        {/* Queue Visualization Panel */}
+                        <div className="absolute top-4 left-4 z-20 bg-white/90 backdrop-blur-sm border border-slate-200 rounded-lg p-2 shadow-sm min-w-[120px]">
+                            <div className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider mb-2 flex items-center gap-1">
+                                <span>BFS Queue</span>
+                                <span className="text-slate-400 font-normal normal-case">(待处理节点)</span>
+                            </div>
+                            <div className="flex gap-1 overflow-x-auto max-w-[200px] pb-1 no-scrollbar min-h-[32px]">
+                                {queue.length === 0 ? (
+                                    <span className="text-xs text-slate-300 italic">Empty</span>
+                                ) : (
+                                    queue.map((node, idx) => (
+                                        <div key={node.id} className="w-8 h-8 flex-shrink-0 flex items-center justify-center rounded bg-slate-100 border border-slate-200 text-xs font-mono font-bold text-slate-600 queue-item-enter">
+                                            {node.val}
+                                        </div>
+                                    ))
+                                )}
+                            </div>
+                        </div>
+
+                        {/* SVG Layers for Lines */}
+                        <svg className="absolute inset-0 w-full h-full pointer-events-none z-0">
+                            {links.map((link) => (
+                                <line
+                                    key={`link-${link.from.id}-${link.to.id}`}
+                                    x1={`${link.from.x}%`}
+                                    y1={link.from.y}
+                                    x2={`${link.to.x}%`}
+                                    y2={link.to.y}
+                                    stroke="#cbd5e1"
+                                    strokeWidth="2"
+                                    className="line-transition"
+                                />
+                            ))}
+                        </svg>
+
+                        {/* HTML Layer for Nodes */}
+                        {nodes.map((node) => (
+                            <div
+                                key={node.id}
+                                className={`absolute w-10 h-10 -ml-5 -mt-5 rounded-full flex items-center justify-center font-bold text-sm shadow-md smooth-transition z-10
+                                        ${node.id === processingNodeId
+                                    ? 'bg-emerald-500 text-white scale-125 ring-4 ring-emerald-200'
+                                    : highlightChildren.includes(node.id)
+                                        ? 'bg-orange-100 border-2 border-orange-400 text-orange-700 scale-110'
+                                        : 'bg-white border-2 border-slate-200 text-slate-700'}`}
+                                style={{
+                                    left: `${node.x}%`,
+                                    top: `${node.y}px`,
+                                }}
+                            >
+                                {node.val}
+                            </div>
+                        ))}
+
+                        {nodes.length === 0 && (
+                            <div className="absolute inset-0 flex items-center justify-center text-slate-400 italic">
+                                Tree is empty
+                            </div>
+                        )}
+                    </div>
+                </div>
+
+                {/* 4. Control Bar */}
+                <div className="w-full max-w-2xl bg-white rounded-xl shadow-lg border border-slate-100 overflow-hidden">
+
+                    <div className="flex items-center justify-between p-4 bg-slate-50 border-b border-slate-100">
+                        <div className="flex space-x-2">
+                            {!isPlaying ? (
+                                <button
+                                    onClick={() => setIsPlaying(true)}
+                                    disabled={isCompleted}
+                                    className="flex items-center space-x-1 bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-300 text-white px-4 py-2 rounded-lg transition-colors text-sm font-medium"
+                                >
+                                    <Icons.Play /> <span>运行</span>
+                                </button>
+                            ) : (
+                                <button
+                                    onClick={() => setIsPlaying(false)}
+                                    className="flex items-center space-x-1 bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded-lg transition-colors text-sm font-medium"
+                                >
+                                    <Icons.Pause /> <span>暂停</span>
+                                </button>
+                            )}
+
+                            <button
+                                onClick={step}
+                                disabled={isPlaying || isCompleted}
+                                className="flex items-center space-x-1 bg-white border border-slate-300 hover:bg-slate-50 disabled:opacity-50 text-slate-700 px-4 py-2 rounded-lg transition-colors text-sm font-medium"
+                            >
+                                <Icons.Step /> <span>单步</span>
+                            </button>
+                        </div>
+
+                        <button
+                            onClick={() => initTree(inputArray)}
+                            className="flex items-center space-x-1 text-slate-500 hover:text-slate-800 transition-colors text-sm"
+                        >
+                            <Icons.Refresh /> <span>重置</span>
+                        </button>
+                    </div>
+
+                    <div className="p-6 bg-white min-h-[100px] flex items-center justify-center text-center">
+                        <div className="flex flex-col items-center gap-2">
+                            <p className={`text-lg font-medium transition-colors duration-300 ${statusColor}`}>
+                                {message}
+                            </p>
+                            {processingNodeId && (
+                                <div className="text-xs text-slate-400 flex items-center gap-1">
+                                    <Icons.Swap /> 绿色节点表示当前处理，<span className="text-orange-500 font-bold">橙色节点</span>表示正在被交换
+                                </div>
+                            )}
+                        </div>
+                    </div>
+
+                    {isPlaying && (
+                        <div className="h-1 w-full bg-slate-100 overflow-hidden">
+                            <div className="h-full bg-emerald-500 animate-progress origin-left"></div>
+                        </div>
+                    )}
+                </div>
+
+                <div className="mt-8 text-slate-400 text-xs text-center">
+                    <p>Invert Binary Tree Visualization • React + Tailwind</p>
+                </div>
+
+            </div>
+        );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+</script>
+
+<style>
+    @keyframes progress {
+        0% { width: 0%; }
+        100% { width: 100%; }
+    }
+    .animate-progress {
+        animation: progress 2s linear infinite;
+    }
+</style>
+</body>
+</html>

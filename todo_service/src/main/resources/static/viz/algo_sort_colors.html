@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>颜色分类 - 算法可视化</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <style>
+        body { background-color: #f8fafc; font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; }
+        .cell-transition { transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1); }
+        .fade-enter { animation: fadeIn 0.4s ease-out forwards; }
+        .scale-pulse { animation: pulseScale 0.4s ease-in-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes pulseScale { 0% { transform: scale(1); } 50% { transform: scale(1.15); } 100% { transform: scale(1); } }
+    </style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel">
+    const { useState, useEffect, useRef, useMemo } = React;
+
+    // --- 图标组件 ---
+    const Icons = {
+        Play: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>,
+        Pause: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>,
+        Step: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>,
+        Reset: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 12" /><path d="M3 3v9h9" /></svg>,
+        Settings: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>,
+        Shuffle: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="16 3 21 3 21 8"></polyline><line x1="4" y1="20" x2="21" y2="3"></line><polyline points="21 16 21 21 16 21"></polyline><line x1="15" y1="15" x2="21" y2="21"></line><line x1="4" y1="4" x2="9" y2="9"></line></svg>,
+        BarChart: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="20" x2="12" y2="10"></line><line x1="18" y1="20" x2="18" y2="4"></line><line x1="6" y1="20" x2="6" y2="16"></line></svg>,
+        Flag: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"></path><line x1="4" y1="22" x2="4" y2="15"></line></svg>,
+        ArrowUp: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="19" x2="12" y2="5"></line><polyline points="5 12 12 5 19 12"></polyline></svg>
+    };
+
+    const App = () => {
+        // --- 状态定义 ---
+        const [inputStr, setInputStr] = useState("2,0,2,1,1,0");
+        const [nums, setNums] = useState([2, 0, 2, 1, 1, 0]);
+
+        // 运行状态
+        const [mode, setMode] = useState("threePointer"); // 'counting' | 'threePointer'
+        const [isPlaying, setIsPlaying] = useState(false);
+        const [isFinished, setIsFinished] = useState(false);
+        const [message, setMessage] = useState("准备就绪。0:红, 1:白, 2:蓝");
+
+        // 计数排序状态
+        const [countPhase, setCountPhase] = useState("COUNT"); // COUNT, REWRITE
+        const [counts, setCounts] = useState([0, 0, 0]); // Count for 0, 1, 2
+        const [currIdx, setCurrIdx] = useState(0); // Iteration index
+        const [writeIdx, setWriteIdx] = useState(0); // Current index being rewritten
+        const [currentWriteVal, setCurrentWriteVal] = useState(0); // 0, 1, or 2
+
+        // 三指针状态
+        const [p0, setP0] = useState(0); // Low pointer
+        const [curr, setCurr] = useState(0); // Current pointer (Mid)
+        const [p2, setP2] = useState(5); // High pointer
+        const [swapping, setSwapping] = useState(null); // {idx1, idx2} for visual
+
+        // --- 初始化/重置 ---
+        const parseInput = () => {
+            try {
+                const arr = inputStr.split(/[,，\s]+/).filter(v => v.trim() !== "").map(Number);
+                if (arr.some(n => ![0, 1, 2].includes(n))) throw new Error("只能包含 0, 1, 2");
+                setNums(arr);
+                resetState(arr);
+                setMessage(`数据已加载。长度: ${arr.length}`);
+            } catch (e) {
+                setMessage("输入错误: " + e.message);
+            }
+        };
+
+        const resetState = (arr = nums) => {
+            setIsPlaying(false);
+            setIsFinished(false);
+            setMessage("状态已重置");
+            setSwapping(null);
+
+            // Counting Reset
+            setCountPhase("COUNT");
+            setCounts([0, 0, 0]);
+            setCurrIdx(0);
+            setWriteIdx(0);
+            setCurrentWriteVal(0);
+
+            // Three Pointer Reset
+            setP0(0);
+            setCurr(0);
+            setP2(arr.length - 1);
+        };
+
+        const randomInput = () => {
+            const len = 8 + Math.floor(Math.random() * 5); // 8-12
+            const arr = Array.from({length: len}, () => Math.floor(Math.random() * 3));
+            setInputStr(arr.join(", "));
+            setNums(arr);
+            resetState(arr);
+            setMessage("已生成随机数组。");
+        };
+
+        // --- 自动播放 ---
+        useEffect(() => {
+            let timer;
+            if (isPlaying && !isFinished) {
+                timer = setInterval(() => {
+                    stepForward();
+                }, mode === 'threePointer' ? 1000 : 600);
+            }
+            return () => clearInterval(timer);
+        }, [isPlaying, isFinished, mode, currIdx, writeIdx, p0, curr, p2, countPhase, currentWriteVal, nums, counts]);
+
+        const stepForward = () => {
+            if (isFinished) return;
+            if (mode === 'counting') stepCounting();
+            else stepThreePointer();
+        };
+
+        // 1. 计数排序 O(2N)
+        const stepCounting = () => {
+            if (countPhase === "COUNT") {
+                if (currIdx >= nums.length) {
+                    setCountPhase("REWRITE");
+                    setCurrIdx(0);
+                    setMessage("统计完成。开始根据计数重写数组。");
+                    return;
+                }
+
+                const val = nums[currIdx];
+                const newCounts = [...counts];
+                newCounts[val]++;
+                setCounts(newCounts);
+                setMessage(`索引 ${currIdx} 是 ${val}。${val} 的数量 +1。`);
+                setCurrIdx(currIdx + 1);
+            }
+            else if (countPhase === "REWRITE") {
+                if (writeIdx >= nums.length) {
+                    setIsFinished(true);
+                    setIsPlaying(false);
+                    setMessage("排序完成！");
+                    return;
+                }
+
+                // Determine what value to write based on counts
+                let valToWrite = currentWriteVal;
+                // If current bucket exhausted, move to next
+                while (valToWrite < 3 && counts[valToWrite] === 0) {
+                    valToWrite++;
+                }
+
+                if (valToWrite > 2) {
+                    setIsFinished(true);
+                    return;
+                }
+
+                setCurrentWriteVal(valToWrite); // Update state for consistency
+
+                const newNums = [...nums];
+                newNums[writeIdx] = valToWrite;
+                setNums(newNums);
+
+                const newCounts = [...counts];
+                newCounts[valToWrite]--;
+                setCounts(newCounts);
+
+                setMessage(`重写索引 ${writeIdx} 为 ${valToWrite} (剩余 ${newCounts[valToWrite]})。`);
+                setWriteIdx(writeIdx + 1);
+            }
+        };
+
+        // 2. 三指针法 O(N)
+        const stepThreePointer = () => {
+            if (curr > p2) {
+                setIsFinished(true);
+                setIsPlaying(false);
+                setMessage("Curr 指针超过 P2，排序完成！");
+                return;
+            }
+
+            // If currently showing a swap animation state, finish it and move pointers
+            if (swapping) {
+                setSwapping(null);
+                // Actual logic after swap
+                // We need to re-evaluate logic based on what happened
+                // But wait, the swap happened in previous step visually?
+                // Let's perform logic then set visual swap.
+            }
+
+            const val = nums[curr];
+
+            if (val === 0) {
+                // Swap nums[curr] and nums[p0]
+                const newNums = [...nums];
+                [newNums[curr], newNums[p0]] = [newNums[p0], newNums[curr]];
+                setNums(newNums);
+                setSwapping({idx1: curr, idx2: p0});
+
+                setMessage(`Curr(${val}) 是 0：与 P0(${nums[p0]}) 交换，P0++, Curr++。`);
+                setP0(p0 + 1);
+                setCurr(curr + 1);
+            }
+            else if (val === 2) {
+                // Swap nums[curr] and nums[p2]
+                const newNums = [...nums];
+                [newNums[curr], newNums[p2]] = [newNums[p2], newNums[curr]];
+                setNums(newNums);
+                setSwapping({idx1: curr, idx2: p2});
+
+                setMessage(`Curr(${val}) 是 2：与 P2(${nums[p2]}) 交换，P2--。\n(注意：交换回来的数可能是 0，所以 Curr 不动)`);
+                setP2(p2 - 1);
+                // Curr does NOT increment here
+            }
+            else {
+                // val === 1
+                setMessage(`Curr(${val}) 是 1：位置正确 (中间)，Curr++。`);
+                setCurr(curr + 1);
+            }
+        };
+
+        // --- 渲染辅助 ---
+        const getColorClass = (val) => {
+            if (val === 0) return "bg-red-500 border-red-700 text-white";
+            if (val === 1) return "bg-slate-100 border-slate-300 text-slate-700";
+            if (val === 2) return "bg-blue-500 border-blue-700 text-white";
+            return "bg-gray-200";
+        };
+
+        const getBarHeight = (val) => {
+            // Just for fun, make them different heights? Or same height different color?
+            // Let's do same height blocks, color is the key info.
+            return "h-16";
+        };
+
+        return (
+            <div className="max-w-4xl mx-auto p-6">
+                {/* 1. 配置区 */}
+                <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4 mb-6">
+                    <div className="flex items-center gap-2 mb-3 text-slate-700 font-bold">
+                        <Icons.Settings />
+                        <span>数据配置</span>
+                    </div>
+                    <div className="flex flex-col sm:flex-row gap-3">
+                        <div className="flex-1">
+                            <label className="text-xs text-slate-400 font-bold ml-1 mb-1 block">数组 (0, 1, 2)</label>
+                            <input
+                                type="text"
+                                value={inputStr}
+                                onChange={(e) => setInputStr(e.target.value)}
+                                className="w-full border border-slate-300 rounded-lg px-3 py-2 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            />
+                        </div>
+                        <div className="flex items-end gap-2">
+                            <button onClick={parseInput} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-medium text-sm h-[42px]">
+                                加载
+                            </button>
+                            <button onClick={randomInput} className="px-3 py-2 bg-slate-100 text-slate-600 rounded-lg hover:bg-slate-200 transition h-[42px]" title="随机">
+                                <Icons.Shuffle />
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                {/* 2. 主区域 */}
+                <div className="bg-white rounded-xl shadow-lg border border-slate-200 overflow-hidden">
+                    {/* Header */}
+                    <div className="border-b border-slate-100 bg-slate-50 p-4 flex flex-col sm:flex-row justify-between items-center gap-4">
+                        <div>
+                            <h1 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+                                <Icons.Flag /> 颜色分类 (Sort Colors)
+                            </h1>
+                            <p className="text-xs text-slate-500 mt-1">荷兰国旗问题：将 0, 1, 2 原地排序。</p>
+                        </div>
+                        <div className="flex bg-slate-200 p-1 rounded-lg">
+                            <button
+                                onClick={() => { setMode('threePointer'); resetState(); }}
+                                className={`px-3 py-1.5 text-sm rounded-md transition-all font-medium flex items-center gap-1 ${mode === 'threePointer' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                            >
+                                <Icons.Shuffle size={14}/> 三指针法 O(N)
+                            </button>
+                            <button
+                                onClick={() => { setMode('counting'); resetState(); }}
+                                className={`px-3 py-1.5 text-sm rounded-md transition-all font-medium flex items-center gap-1 ${mode === 'counting' ? 'bg-white text-purple-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                            >
+                                <Icons.BarChart size={14}/> 计数排序 O(2N)
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Visualization Canvas */}
+                    <div className="p-8 bg-slate-50 min-h-[300px] flex flex-col relative gap-8 items-center">
+
+                        {/* Array Visual */}
+                        <div className="flex flex-wrap gap-2 justify-center pt-8">
+                            {nums.map((num, i) => {
+                                // Visual states
+                                let isActive = false;
+                                if (mode === 'counting') {
+                                    if (countPhase === 'COUNT' && i === currIdx) isActive = true;
+                                    if (countPhase === 'REWRITE' && i === writeIdx) isActive = true;
+                                } else {
+                                    if (i === curr) isActive = true;
+                                    if (swapping && (i === swapping.idx1 || i === swapping.idx2)) isActive = true; // highlight swapped
+                                }
+
+                                const isPointerP0 = mode === 'threePointer' && i === p0;
+                                const isPointerP2 = mode === 'threePointer' && i === p2;
+                                const isPointerCurr = mode === 'threePointer' && i === curr;
+
+                                return (
+                                    <div key={i} className="flex flex-col items-center gap-1 relative">
+                                        {/* Pointers Top */}
+                                        {isPointerP0 && <div className="absolute -top-12 text-red-500 font-bold text-xs flex flex-col items-center animate-bounce">P0<Icons.ArrowUp className="rotate-180" /></div>}
+                                        {isPointerP2 && <div className="absolute -top-8 text-blue-500 font-bold text-xs flex flex-col items-center animate-bounce">P2<Icons.ArrowUp className="rotate-180" /></div>}
+
+                                        <div
+                                            className={`w-10 h-14 rounded border-2 flex items-center justify-center font-bold text-lg cell-transition ${getColorClass(num)} ${isActive ? 'scale-110 shadow-xl z-10' : 'shadow-sm'}`}
+                                        >
+                                            {num}
+                                        </div>
+
+                                        <span className="text-[10px] text-slate-400 font-mono">{i}</span>
+
+                                        {/* Pointers Bottom */}
+                                        {isPointerCurr && !isFinished && (
+                                            <div className="absolute -bottom-8 text-purple-600 font-bold text-xs flex flex-col items-center animate-bounce">
+                                                <Icons.ArrowUp /> Curr
+                                            </div>
+                                        )}
+                                        {mode === 'counting' && isActive && (
+                                            <div className="absolute -bottom-8 text-purple-600 font-bold text-xs flex flex-col items-center animate-bounce">
+                                                <Icons.ArrowUp />
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            })}
+                        </div>
+
+                        {/* Extra Info Panel */}
+                        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm w-full max-w-lg mt-4 flex justify-around">
+                            {mode === 'counting' ? (
+                                <>
+                                    <div className="flex flex-col items-center">
+                                        <div className="w-8 h-8 bg-red-500 rounded flex items-center justify-center text-white font-bold mb-1">{counts[0]}</div>
+                                        <span className="text-xs text-slate-500">Count 0</span>
+                                    </div>
+                                    <div className="flex flex-col items-center">
+                                        <div className="w-8 h-8 bg-slate-100 border border-slate-300 rounded flex items-center justify-center text-slate-700 font-bold mb-1">{counts[1]}</div>
+                                        <span className="text-xs text-slate-500">Count 1</span>
+                                    </div>
+                                    <div className="flex flex-col items-center">
+                                        <div className="w-8 h-8 bg-blue-500 rounded flex items-center justify-center text-white font-bold mb-1">{counts[2]}</div>
+                                        <span className="text-xs text-slate-500">Count 2</span>
+                                    </div>
+                                </>
+                            ) : (
+                                // Three pointer legend
+                                <div className="grid grid-cols-3 gap-x-8 gap-y-2 text-xs">
+                                    <div className="flex items-center gap-1"><div className="w-3 h-3 bg-red-500 rounded"></div> 0 (Left)</div>
+                                    <div className="flex items-center gap-1"><div className="w-3 h-3 bg-slate-200 border rounded"></div> 1 (Mid)</div>
+                                    <div className="flex items-center gap-1"><div className="w-3 h-3 bg-blue-500 rounded"></div> 2 (Right)</div>
+                                    <div className="col-span-3 text-slate-400 mt-2 text-center border-t pt-2">
+                                        P0: {p0} | Curr: {curr} | P2: {p2}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
+                    </div>
+
+                    {/* Controls */}
+                    <div className="border-t border-slate-100 p-4 bg-white">
+                        <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+                            <div className="flex-1 bg-blue-50 text-blue-800 px-4 py-3 rounded-lg text-sm border-l-4 border-blue-500 w-full sm:w-auto shadow-sm whitespace-pre-line transition-all">
+                                {message}
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <button onClick={() => setIsPlaying(!isPlaying)} disabled={isFinished} className={`flex items-center gap-2 px-4 py-2 rounded-lg text-white font-medium transition ${isPlaying ? 'bg-red-500 hover:bg-red-600' : 'bg-blue-600 hover:bg-blue-700'} disabled:opacity-50`}>
+                                    {isPlaying ? <Icons.Pause /> : <Icons.Play />}
+                                    <span className="hidden sm:inline">{isPlaying ? "暂停" : "自动"}</span>
+                                </button>
+                                <button onClick={stepForward} disabled={isPlaying || isFinished} className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 font-medium transition disabled:opacity-50">
+                                    <Icons.Step />
+                                    <span className="hidden sm:inline">单步</span>
+                                </button>
+                                <button onClick={() => resetState()} className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition">
+                                    <Icons.Reset />
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        );
+    };
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+</script>
+</body>
+</html>

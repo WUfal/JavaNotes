@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>腐烂的橘子 - 算法可视化</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <style>
+        body { background-color: #f8fafc; font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; }
+        .cell-transition { transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1); }
+        .fade-in { animation: fadeIn 0.5s ease-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: scale(0.9); } to { opacity: 1; transform: scale(1); } }
+
+        /* 腐烂扩散波纹动画 */
+        .rot-pulse { animation: rotPulse 0.6s ease-in-out; }
+        @keyframes rotPulse {
+            0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(132, 204, 22, 0.7); }
+            50% { transform: scale(1.1); box-shadow: 0 0 0 8px rgba(132, 204, 22, 0); }
+            100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(132, 204, 22, 0); }
+        }
+
+        /* 网格背景 */
+        .grid-bg {
+            background-image: radial-gradient(#e2e8f0 1px, transparent 1px);
+            background-size: 20px 20px;
+        }
+    </style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel">
+    const { useState, useEffect, useRef } = React;
+
+    // --- 图标组件 ---
+    const Icons = {
+        Play: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>,
+        Pause: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>,
+        Step: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>,
+        Reset: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 12" /><path d="M3 3v9h9" /></svg>,
+        Settings: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>,
+        Shuffle: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="16 3 21 3 21 8"></polyline><line x1="4" y1="20" x2="21" y2="3"></line><polyline points="21 16 21 21 16 21"></polyline><line x1="15" y1="15" x2="21" y2="21"></line><line x1="4" y1="4" x2="9" y2="9"></line></svg>
+    };
+
+    // --- 常量 ---
+    const EMPTY = 0;
+    const FRESH = 1;
+    const ROTTEN = 2;
+
+    const App = () => {
+        // --- 状态定义 ---
+        const [gridStr, setGridStr] = useState("[[2,1,1],[1,1,0],[0,1,1]]");
+
+        // 核心数据
+        const [grid, setGrid] = useState([]);
+        const [rows, setRows] = useState(3);
+        const [cols, setCols] = useState(3);
+
+        // 算法状态
+        const [queue, setQueue] = useState([]); // BFS Queue
+        const [freshCount, setFreshCount] = useState(0);
+        const [minute, setMinute] = useState(0);
+        const [justRotted, setJustRotted] = useState([]); // Highlighting newly rotted cells
+
+        // 运行控制
+        const [isPlaying, setIsPlaying] = useState(false);
+        const [isFinished, setIsFinished] = useState(false);
+        const [message, setMessage] = useState("准备就绪");
+        const [msgColor, setMsgColor] = useState("text-slate-600");
+
+        const timerRef = useRef(null);
+
+        // --- 初始化 ---
+        const parseInput = (str) => {
+            try {
+                return JSON.parse(str);
+            } catch (e) {
+                return null;
+            }
+        };
+
+        const reset = (newGrid = null) => {
+            let initialGrid = newGrid;
+            if (!initialGrid) {
+                initialGrid = parseInput(gridStr);
+                if (!Array.isArray(initialGrid)) return;
+            }
+
+            // Deep copy to avoid reference issues
+            const g = initialGrid.map(row => [...row]);
+            const r = g.length;
+            const c = g[0].length;
+
+            // Initialize BFS state
+            const q = [];
+            let fresh = 0;
+
+            for(let i=0; i<r; i++) {
+                for(let j=0; j<c; j++) {
+                    if (g[i][j] === ROTTEN) {
+                        q.push([i, j]);
+                    } else if (g[i][j] === FRESH) {
+                        fresh++;
+                    }
+                }
+            }
+
+            setGrid(g);
+            setRows(r);
+            setCols(c);
+            setQueue(q);
+            setFreshCount(fresh);
+            setMinute(0);
+            setJustRotted([]);
+            setIsPlaying(false);
+            setIsFinished(false);
+            setMessage(`初始状态：${fresh} 个新鲜橘子，${q.length} 个腐烂源。`);
+            setMsgColor("text-slate-600");
+
+            if (timerRef.current) clearInterval(timerRef.current);
+        };
+
+        const loadInput = () => reset();
+
+        const randomGrid = () => {
+            const r = 4 + Math.floor(Math.random() * 3); // 4-6 rows
+            const c = 4 + Math.floor(Math.random() * 3); // 4-6 cols
+            const newGrid = [];
+
+            for(let i=0; i<r; i++) {
+                const row = [];
+                for(let j=0; j<c; j++) {
+                    const rand = Math.random();
+                    if (rand < 0.2) row.push(EMPTY);      // 20% Empty
+                    else if (rand < 0.3) row.push(ROTTEN); // 10% Rotten
+                    else row.push(FRESH);                 // 70% Fresh
+                }
+                newGrid.push(row);
+            }
+            const str = JSON.stringify(newGrid);
+            setGridStr(str);
+            reset(newGrid);
+            setMessage("随机网格生成完毕。");
+        };
+
+        const toggleCell = (r, c) => {
+            if (isPlaying || isFinished) return; // Prevent editing during run
+
+            const newGrid = grid.map(row => [...row]);
+            // Cycle: 0 -> 1 -> 2 -> 0
+            newGrid[r][c] = (newGrid[r][c] + 1) % 3;
+
+            // Recalculate stats immediately
+            let fresh = 0;
+            const q = [];
+            for(let i=0; i<rows; i++) {
+                for(let j=0; j<cols; j++) {
+                    if (newGrid[i][j] === ROTTEN) q.push([i, j]);
+                    else if (newGrid[i][j] === FRESH) fresh++;
+                }
+            }
+
+            setGrid(newGrid);
+            setQueue(q);
+            setFreshCount(fresh);
+            setGridStr(JSON.stringify(newGrid)); // Sync string
+        };
+
+        useEffect(() => {
+            reset();
+        }, []);
+
+        // --- 核心算法逻辑 (BFS Level-by-Level) ---
+        const stepForward = () => {
+            if (isFinished) return;
+
+            // 如果已经没有新鲜橘子，或者队列空了
+            if (freshCount === 0) {
+                setIsFinished(true);
+                setIsPlaying(false);
+                setMessage(`所有橘子都烂了！总耗时：${minute} 分钟。`);
+                setMsgColor("text-green-600");
+                return;
+            }
+
+            if (queue.length === 0) {
+                setIsFinished(true);
+                setIsPlaying(false);
+                setMessage(`腐烂无法继续扩散。仍有 ${freshCount} 个新鲜橘子。返回 -1。`);
+                setMsgColor("text-red-600");
+                return;
+            }
+
+            // Process one level (one minute)
+            const nextQueue = [];
+            const nextGrid = grid.map(row => [...row]);
+            let rottedThisRound = [];
+            let currentFreshCount = freshCount;
+
+            const dirs = [[0,1], [0,-1], [1,0], [-1,0]];
+
+            for (let [r, c] of queue) {
+                for (let [dr, dc] of dirs) {
+                    const nr = r + dr;
+                    const nc = c + dc;
+
+                    if (nr >= 0 && nr < rows && nc >= 0 && nc < cols) {
+                        if (nextGrid[nr][nc] === FRESH) {
+                            nextGrid[nr][nc] = ROTTEN;
+                            currentFreshCount--;
+                            nextQueue.push([nr, nc]);
+                            rottedThisRound.push(`${nr},${nc}`);
+                        }
+                    }
+                }
+            }
+
+            if (nextQueue.length > 0) {
+                setGrid(nextGrid);
+                setQueue(nextQueue);
+                setFreshCount(currentFreshCount);
+                setMinute(m => m + 1);
+                setJustRotted(rottedThisRound);
+                setMessage(`第 ${minute + 1} 分钟：${rottedThisRound.length} 个橘子被感染。`);
+                setMsgColor("text-lime-700");
+            } else {
+                setQueue([]);
+                setMessage("本轮没有新的橘子腐烂。");
+            }
+        };
+
+        // --- 自动播放 ---
+        useEffect(() => {
+            let timer;
+            if (isPlaying && !isFinished) {
+                timer = setInterval(() => {
+                    stepForward();
+                }, 1000);
+            }
+            return () => clearInterval(timer);
+        }, [isPlaying, isFinished, queue, freshCount, minute, grid]);
+
+        // --- 渲染辅助 ---
+
+        const getCellContent = (val, r, c) => {
+            if (val === EMPTY) return null;
+
+            // Animation class for newly rotted
+            const isNew = justRotted.includes(`${r},${c}`);
+            const animClass = isNew ? "rot-pulse" : "";
+
+            if (val === FRESH) {
+                return <span className="text-2xl drop-shadow-sm select-none">🍊</span>;
+            }
+            if (val === ROTTEN) {
+                return <span className={`text-2xl drop-shadow-sm select-none ${animClass} grayscale-[0.2] contrast-125`}>🦠</span>;
+            }
+        };
+
+        const getCellClass = (val, r, c) => {
+            let base = "w-12 h-12 sm:w-14 sm:h-14 flex items-center justify-center border rounded-lg relative cell-transition cursor-pointer hover:ring-2 hover:ring-blue-200 ";
+
+            if (val === EMPTY) {
+                base += "bg-slate-50 border-slate-200";
+            } else if (val === FRESH) {
+                base += "bg-orange-50 border-orange-200";
+            } else if (val === ROTTEN) {
+                const isNew = justRotted.includes(`${r},${c}`);
+                if (isNew) base += "bg-lime-200 border-lime-400";
+                else base += "bg-lime-100 border-lime-300";
+            }
+            return base;
+        };
+
+        return (
+            <div className="max-w-4xl mx-auto p-4 sm:p-6">
+                {/* 1. 顶部配置 */}
+                <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4 mb-6">
+                    <div className="flex items-center gap-2 mb-3 text-slate-700 font-bold">
+                        <Icons.Settings />
+                        <span>数据配置</span>
+                    </div>
+                    <div className="flex flex-col gap-3">
+                        <div className="flex items-center gap-2">
+                            <input
+                                type="text"
+                                value={gridStr}
+                                onChange={(e) => setGridStr(e.target.value)}
+                                className="flex-1 border border-slate-300 rounded-lg px-3 py-2 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-lime-500"
+                                placeholder="[[2,1,1],[1,1,0],[0,1,1]]"
+                            />
+                        </div>
+                        <div className="flex gap-2 justify-end">
+                            <button onClick={loadInput} className="px-4 py-2 bg-lime-600 text-white rounded-lg hover:bg-lime-700 transition font-medium text-sm">
+                                加载
+                            </button>
+                            <button onClick={randomGrid} className="px-3 py-2 bg-slate-100 text-slate-600 rounded-lg hover:bg-slate-200 transition" title="随机生成">
+                                <Icons.Shuffle />
+                            </button>
+                        </div>
+                        <div className="text-xs text-slate-400 text-right mt-1">
+                            * 点击格子可手动修改状态 (空白 -> 新鲜 -> 腐烂)
+                        </div>
+                    </div>
+                </div>
+
+                {/* 2. 主体区 */}
+                <div className="bg-white rounded-xl shadow-lg border border-slate-200 overflow-hidden">
+                    {/* Header */}
+                    <div className="border-b border-slate-100 bg-slate-50 p-4 flex flex-col sm:flex-row justify-between items-center gap-4">
+                        <div>
+                            <h1 className="text-xl font-bold text-slate-800">腐烂的橘子</h1>
+                            <p className="text-xs text-slate-500 mt-1">多源 BFS (广度优先搜索) · LeetCode 994</p>
+                        </div>
+                        <div className="flex gap-6">
+                            <div className="flex flex-col items-center">
+                                <span className="text-xs font-bold text-slate-400 uppercase">Time</span>
+                                <span className="text-2xl font-black text-lime-600">{minute} min</span>
+                            </div>
+                            <div className="w-px h-8 bg-slate-200"></div>
+                            <div className="flex flex-col items-center">
+                                <span className="text-xs font-bold text-slate-400 uppercase">Fresh</span>
+                                <span className={`text-2xl font-bold ${freshCount === 0 ? 'text-slate-300' : 'text-orange-500'}`}>{freshCount}</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Canvas */}
+                    <div className="p-6 bg-slate-50 min-h-[300px] flex justify-center items-center overflow-auto grid-bg">
+                        <div className="grid gap-1 p-2 bg-white/50 backdrop-blur-sm rounded-xl border border-slate-200 shadow-sm"
+                             style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}>
+                            {grid.map((row, r) => (
+                                row.map((val, c) => (
+                                    <div
+                                        key={`${r}-${c}`}
+                                        className={getCellClass(val, r, c)}
+                                        onClick={() => toggleCell(r, c)}
+                                    >
+                                        {getCellContent(val, r, c)}
+                                    </div>
+                                ))
+                            ))}
+                        </div>
+                    </div>
+
+                    {/* Controls */}
+                    <div className="border-t border-slate-100 p-4 bg-white">
+                        <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+                            <div className={`flex-1 px-4 py-3 rounded-lg text-sm border-l-4 w-full sm:w-auto transition-colors ${msgColor.replace('text-', 'border-').replace('600', '500')} bg-slate-50`}>
+                                <span className={msgColor}>{message}</span>
+                            </div>
+
+                            <div className="flex items-center gap-2">
+                                <button onClick={() => setIsPlaying(!isPlaying)} disabled={isFinished} className={`flex items-center gap-2 px-4 py-2 rounded-lg text-white font-medium transition ${isPlaying ? 'bg-amber-500 hover:bg-amber-600' : 'bg-lime-600 hover:bg-lime-700'} disabled:opacity-50`}>
+                                    {isPlaying ? <Icons.Pause /> : <Icons.Play />}
+                                    <span className="hidden sm:inline">{isPlaying ? "暂停" : "运行"}</span>
+                                </button>
+                                <button onClick={stepForward} disabled={isPlaying || isFinished} className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 font-medium transition disabled:opacity-50">
+                                    <Icons.Step />
+                                    <span className="hidden sm:inline">单步</span>
+                                </button>
+                                <button onClick={() => reset()} className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition" title="重置">
+                                    <Icons.Reset />
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        );
+    };
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+</script>
+</body>
+</html>

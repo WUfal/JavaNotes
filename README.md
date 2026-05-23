@@ -1,6 +1,14 @@
 # JavaNotes
 
-JavaNotes is a learning app made of two parts:
+JavaNotes is a full-stack Java learning app with AI tutoring, code sandboxing, algorithm visualization, practice review, comments, bookmarks, badges, and local-first notes.
+
+Open the project homepage:
+
+- [Homepage](index.html)
+- [Technical report](docs/technical-report.html)
+- [Feature showcase](docs/screenshots-report.html)
+
+The app is made of two parts:
 
 - `todo_mobile`: Flutter client.
 - `todo_service`: Spring Boot backend.
@@ -31,4 +39,3 @@ Pass the backend base URL when running Flutter:
 ```bash
 flutter run --dart-define=API_BASE_URL=http://10.0.2.2:8080
 ```
-

@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>JavaNotes Technical Report</title>
+  <style>
+    body {
+      max-width: 980px;
+      margin: 0 auto;
+      padding: 28px 20px 56px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans SC", Arial, sans-serif;
+      color: #24292f;
+      line-height: 1.6;
+      background: #fff;
+    }
+    h1, h2, h3 { line-height: 1.25; }
+    h1, h2 { border-bottom: 1px solid #d0d7de; padding-bottom: 0.35em; }
+    table { width: 100%; border-collapse: collapse; margin: 16px 0; }
+    th, td { border: 1px solid #d0d7de; padding: 8px 12px; text-align: left; }
+    tr:nth-child(even) { background: #f6f8fa; }
+    code { padding: 0.2em 0.4em; border-radius: 6px; background: #afb8c133; }
+    pre { padding: 16px; overflow: auto; border-radius: 6px; background: #f6f8fa; }
+    a { color: #0969da; text-decoration: none; }
+    .back { margin-bottom: 20px; }
+    .notice { padding: 14px 16px; border-left: 4px solid #1f883d; background: #f0fff4; color: #1a5e2a; }
+  </style>
+</head>
+<body>
+  <p class="back"><a href="../index.html">返回首页</a></p>
+  <h1>JavaNotes 智能学习助手技术报告</h1>
+  <p><strong>JavaNotes</strong> 是一款面向 Java 自学场景的移动端应用，集成 AI 智能助教、在线代码沙盒、社区互动、本地知识库和算法可视化能力。</p>
+
+  <div class="notice">此开源报告为脱敏版本，已移除公网 IP、APK 下载地址、数据库密码、AI Key 和 JWT Secret。</div>
+
+  <h2>项目介绍</h2>
+  <p>系统采用 A/B 双路径设计：A 路径面向零基础用户，提供闯关式学习体验；B 路径面向进阶用户，提供企业级项目实战、算法可视化演示与深度技术文章。</p>
+
+  <h2>技术栈</h2>
+  <h3>前端</h3>
+  <table>
+    <tr><th>技术</th><th>说明</th></tr>
+    <tr><td>Flutter</td><td>跨平台 UI 框架，实现 Android/iOS 双端一致体验。</td></tr>
+    <tr><td>Provider</td><td>全局状态管理，包括用户会话、主题、AI 上下文等。</td></tr>
+    <tr><td>Sqflite</td><td>本地优先策略，用于存储离线笔记与刷题历史。</td></tr>
+    <tr><td>WebView Flutter</td><td>集成 HTML/JS 静态资源，实现算法可视化动画。</td></tr>
+  </table>
+
+  <h3>后端</h3>
+  <table>
+    <tr><th>技术</th><th>说明</th></tr>
+    <tr><td>Spring Boot 3.x</td><td>核心业务框架，提供 RESTful API。</td></tr>
+    <tr><td>PostgreSQL</td><td>存储课程内容、用户数据与社区评论。</td></tr>
+    <tr><td>Flyway</td><td>数据库版本迁移管理。</td></tr>
+    <tr><td>Spring Security</td><td>集成 JWT 实现无状态认证。</td></tr>
+    <tr><td>Java Compiler API</td><td>服务端动态编译运行用户代码。</td></tr>
+  </table>
+
+  <h2>系统架构</h2>
+  <pre><code>todo_mobile/
+  lib/
+    providers/   状态管理
+    services/    API 服务
+    pages/       UI 页面
+    models/      数据模型
+
+todo_service/
+  src/main/java/
+    controller/  REST 接口
+    service/     业务逻辑
+    entity/      JPA 实体
+    config/      安全与缓存配置
+  src/main/resources/
+    db/migration/ Flyway SQL 脚本
+    static/viz/   算法可视化静态资源</code></pre>
+
+  <h2>核心功能实现</h2>
+  <h3>AI 智能助教与每日一练</h3>
+  <p>后端将耗时的大模型生成流程设计为异步任务，先返回任务 ID，再由后台线程完成题目生成、状态更新和结果持久化，避免移动端长时间阻塞。</p>
+
+  <h3>个人知识库</h3>
+  <p>笔记系统采用离线优先架构，用户笔记存储在本地 SQLite 数据库中，无需网络也可查看和编辑。</p>
+
+  <h3>算法可视化</h3>
+  <p>算法动画以静态资源形式放在后端，Flutter 端通过 WebView 加载，并根据运行环境自动拼接服务地址。</p>
+
+  <h2>部署与运行</h2>
+  <p>后端通过环境变量配置敏感信息；移动端通过 <code>--dart-define=API_BASE_URL=...</code> 注入后端地址。</p>
+  <pre><code>mvn spring-boot:run
+flutter run --dart-define=API_BASE_URL=http://10.0.2.2:8080</code></pre>
+</body>
+</html>
